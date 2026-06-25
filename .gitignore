@@ -1,0 +1,42 @@
+# Unity tarafından otomatik üretilen klasörler
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+
+# Build çıktıları
+/[Bb]uild/
+/[Bb]uilds/
+/WebBuild/
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# IDE / araçlar
+.vs/
+.idea/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# macOS
+.DS_Store
+
+# Crash raporları / autosave
+sysinfo.txt
+*.stackdump
+[Aa]ssets/AutoLightingData*
