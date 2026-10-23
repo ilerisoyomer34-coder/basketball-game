@@ -1,0 +1,408 @@
+// SHIFTBREAKER — data assets. Every tunable number lives here (no magic numbers in systems).
+(function (root) {
+  'use strict';
+  const SB = (root.SB = root.SB || {});
+  const D = (SB.DATA = {});
+
+  // ---------------------------------------------------------------- rules
+  D.RULES = {
+    physicsHz: 240, // drivetrain + chassis fixed step (spec: >= 120 Hz)
+    physicsHzLow: 120, // low-quality preset
+    shift: {
+      cleanEngagement: 0.15, // clutch engagement below this = "clutch in"
+      clutchlessRpmWindow: 250, // ±rpm for a clutchless shift
+      clutchlessMaxThrottle: 0.15,
+      disengageMaxThrottle: 0.3, // can't pull out of gear under load without clutch
+      leverBase: 0.1, // s
+      leverPerGate: 0.035, // s per gate unit of lever travel
+      seqTravel: 0.065,
+      grindToNeutral: 0.35, // released lever falls back to N after this much grinding
+      rEngageKmh: 3,
+      rGrindKmh: 15,
+      rForceSlow: 1.0, // s of forcing at 3–15 km/h → "klank"
+      rForceFast: 1.5, // s of forcing above 15 km/h → teeth break
+      synchroWearPerRpm: 0.0000025,
+      grindWear: 0.012, // gear health per second grinding
+    },
+    explosion: { hWindow: 2.0, seqWindow: 1.5, thr61: 40, thr6R: 10 },
+    overRev: { valveFloat: 1.0, damage: 1.1, seize: 1.3, valveFloatWear: 0.03, damageMin: 0.15, damageMax: 0.45, limiterWearPerSec: 0.00025 },
+    stall: { grace: 0.28 },
+    lug: { base: 1000, perGear: 40, torque: 0.65 },
+    clutchHeat: { capacity: 9000, cool: 0.08, hot: 250, burn: 300, wearPerJoule: 2.5e-7 },
+    engineHeat: { normal: 88, tau: 35, overheat: 112, critical: 122 },
+    fuel: { base: 4.5e-4, throttle: 3.0, idleShare: 0.15 },
+    starter: { torque: 0.32, maxRpm: 320, minCrank: 0.8, maxCrank: 1.5 },
+  };
+
+  // H-pattern layouts: gate coordinates (x columns, y: +1 top row, -1 bottom row)
+  D.LAYOUTS = {
+    A: { '-1': [-1.5, 1], 1: [-0.5, 1], 2: [-0.5, -1], 3: [0.5, 1], 4: [0.5, -1], 5: [1.5, 1], 6: [1.5, -1] },
+    B: { 1: [-1, 1], 2: [-1, -1], 3: [0, 1], 4: [0, -1], 5: [1, 1], 6: [1, -1], '-1': [2, -1] },
+  };
+
+  const tire = (mu, peakSlip, peakAngle, C) => ({ mu, peakSlip, peakAngle, C });
+
+  // ---------------------------------------------------------------- cars (fictional makes)
+  D.CARS = {
+    lodos: {
+      id: 'lodos',
+      make: 'Boğaz Motor',
+      name: 'Lodos HB 1.6T',
+      cls: 'C',
+      drive: 'FWD',
+      gearbox: 'manual', // manual | sequential
+      layout: 'A',
+      price: 24000,
+      fuelType: 'petrol',
+      fuelTank: 45,
+      body: 'hatch',
+      color: 0xc8322b,
+      mass: 1180,
+      weightFront: 0.61,
+      cgHeight: 0.52,
+      wheelbase: 2.52,
+      track: 1.5,
+      dims: { length: 4.05, width: 1.76, height: 1.45 },
+      inertiaScale: 0.85,
+      engine: {
+        type: 'I4 1.6 turbo',
+        cylinders: 4,
+        idle: 850,
+        redline: 6500,
+        limiter: 6700,
+        stallRpm: 450,
+        maxTorque: 245,
+        inertia: 0.15,
+        fric0: 0.06,
+        fric1: 0.018,
+        curve: [[0, 0.3], [800, 0.5], [1500, 0.72], [2200, 0.95], [2600, 1.0], [4500, 1.0], [5500, 0.9], [6500, 0.76], [7000, 0.6], [9000, 0.3]],
+        turbo: { share: 0.35, lag: 0.55, spool: [1500, 3000] },
+      },
+      clutch: { bite: 0.42, band: 0.3, capacity: 1.75 },
+      gears: { ratios: [3.6, 2.1, 1.45, 1.1, 0.88, 0.72], reverse: 3.4, final: 3.9 },
+      diff: { type: 'open' },
+      wheel: { radius: 0.31, width: 0.21, inertia: 1.1 },
+      tire: tire(1.0, 0.12, 0.15, 1.5),
+      susp: { restLen: 0.3, travel: 0.2, freq: 1.65, zeta: 0.38, arbF: 14000, arbR: 9000 },
+      brakes: { front: 2300, rear: 1100, hand: 1900 },
+      steer: { max: 0.6, rate: 2.6 },
+      aero: { cdA: 0.69, clA: 0.0 },
+      exhaust: [[-0.45, -0.32, -2.05]],
+    },
+    karayel: {
+      id: 'karayel',
+      make: 'Anka Otomotiv',
+      name: 'Karayel GT 3.0',
+      cls: 'A',
+      drive: 'RWD',
+      gearbox: 'manual',
+      layout: 'B',
+      price: 52000,
+      fuelType: 'petrol',
+      fuelTank: 62,
+      body: 'coupe',
+      color: 0x1f4e8c,
+      mass: 1420,
+      weightFront: 0.52,
+      cgHeight: 0.5,
+      wheelbase: 2.7,
+      track: 1.56,
+      dims: { length: 4.45, width: 1.84, height: 1.32 },
+      inertiaScale: 0.85,
+      engine: {
+        type: 'I6 3.0',
+        cylinders: 6,
+        idle: 800,
+        redline: 7200,
+        limiter: 7400,
+        stallRpm: 420,
+        maxTorque: 365,
+        inertia: 0.22,
+        fric0: 0.055,
+        fric1: 0.016,
+        curve: [[0, 0.4], [800, 0.56], [2000, 0.8], [3500, 0.95], [4800, 1.0], [6000, 0.96], [7200, 0.86], [7800, 0.66], [9000, 0.3]],
+        turbo: null,
+      },
+      clutch: { bite: 0.5, band: 0.28, capacity: 1.7 },
+      gears: { ratios: [3.4, 2.1, 1.48, 1.15, 0.92, 0.78], reverse: 3.3, final: 3.46 },
+      diff: { type: 'lsd', preload: 80, bias: 0.35, k: 60 },
+      wheel: { radius: 0.33, width: 0.25, inertia: 1.4 },
+      tire: tire(1.05, 0.11, 0.14, 1.5),
+      susp: { restLen: 0.28, travel: 0.18, freq: 1.85, zeta: 0.4, arbF: 18000, arbR: 12000 },
+      brakes: { front: 2900, rear: 1700, hand: 2300 },
+      steer: { max: 0.56, rate: 2.8 },
+      aero: { cdA: 0.66, clA: 0.18 },
+      exhaust: [[-0.35, -0.3, -2.25], [0.35, -0.3, -2.25]],
+    },
+    poyraz: {
+      id: 'poyraz',
+      make: 'Kıyı Spor',
+      name: 'Poyraz RS',
+      cls: 'R',
+      drive: 'RWD',
+      gearbox: 'sequential', // dog-box: clutchless shifts with ignition cut / auto blip
+      layout: 'A',
+      price: 64000,
+      fuelType: 'petrol',
+      fuelTank: 70,
+      body: 'track',
+      color: 0xe8e3d6,
+      mass: 1080,
+      weightFront: 0.47,
+      cgHeight: 0.42,
+      wheelbase: 2.56,
+      track: 1.62,
+      dims: { length: 4.2, width: 1.92, height: 1.22 },
+      inertiaScale: 0.8,
+      straightCut: true,
+      launchControl: 4800,
+      engine: {
+        type: 'I4 2.0 NA',
+        cylinders: 4,
+        idle: 1100,
+        redline: 8800,
+        limiter: 9000,
+        stallRpm: 600,
+        maxTorque: 275,
+        inertia: 0.12,
+        fric0: 0.065,
+        fric1: 0.016,
+        curve: [[0, 0.3], [1000, 0.45], [3000, 0.7], [5000, 0.88], [7000, 1.0], [8000, 0.97], [8800, 0.9], [9400, 0.6], [11000, 0.3]],
+        turbo: null,
+      },
+      clutch: { bite: 0.56, band: 0.2, capacity: 2.1 },
+      gears: { ratios: [3.1, 2.3, 1.85, 1.54, 1.31, 1.13], reverse: 3.0, final: 3.9 },
+      diff: { type: 'lsd', preload: 120, bias: 0.5, k: 90 },
+      wheel: { radius: 0.32, width: 0.27, inertia: 1.2 },
+      tire: tire(1.2, 0.1, 0.13, 1.45),
+      susp: { restLen: 0.24, travel: 0.14, freq: 2.3, zeta: 0.45, arbF: 26000, arbR: 18000 },
+      brakes: { front: 3300, rear: 2100, hand: 2400 },
+      steer: { max: 0.52, rate: 3.2 },
+      aero: { cdA: 0.72, clA: 1.6 },
+      exhaust: [[0.0, -0.25, -2.12]],
+    },
+  };
+  D.CAR_ORDER = ['lodos', 'karayel', 'poyraz'];
+
+  // Performance Index (PP 100–999) from power/weight, grip, and aero.
+  D.performancePoints = (car, tune) => {
+    const t = tune || {};
+    const tq = car.engine.maxTorque * (1 + (t.power || 0));
+    const kw = (tq * car.engine.redline * 0.88 * (2 * Math.PI)) / 60 / 1000;
+    const mass = car.mass * (1 - (t.weight || 0));
+    const pw = kw / (mass / 1000);
+    const grip = car.tire.mu * (1 + (t.grip || 0));
+    const pp = 120 + pw * 2.6 + (grip - 0.9) * 900 + car.aero.clA * 35;
+    return Math.round(Math.max(100, Math.min(999, pp)));
+  };
+
+  // ---------------------------------------------------------------- surfaces
+  D.SURFACES = {
+    asphalt: { mu: 1.0, wet: 0.78, rr: 0.012, rumble: 0, dust: 0 },
+    cobble: { mu: 0.88, wet: 0.66, rr: 0.018, rumble: 1, dust: 0 },
+    dirt: { mu: 0.68, wet: 0.55, rr: 0.03, rumble: 0.4, dust: 1 },
+    gravel: { mu: 0.62, wet: 0.56, rr: 0.035, rumble: 0.6, dust: 1 },
+    grass: { mu: 0.58, wet: 0.45, rr: 0.035, rumble: 0.3, dust: 0.4 },
+    concrete: { mu: 0.95, wet: 0.75, rr: 0.012, rumble: 0, dust: 0 },
+    deck: { mu: 0.97, wet: 0.74, rr: 0.012, rumble: 0.15, dust: 0 },
+  };
+  D.SURFACE_IDS = ['grass', 'asphalt', 'cobble', 'dirt', 'gravel', 'concrete', 'deck'];
+  D.WEATHER = {
+    sunny: { grip: 1, wet: 0, fog: 1, rain: 0, snow: 0 },
+    cloudy: { grip: 1, wet: 0, fog: 1.3, rain: 0, snow: 0 },
+    fog: { grip: 1, wet: 0.2, fog: 4.5, rain: 0, snow: 0 },
+    rain: { grip: 1, wet: 1, fog: 1.8, rain: 1, snow: 0 },
+    storm: { grip: 1, wet: 1, fog: 2.4, rain: 1.8, snow: 0 },
+    snow: { grip: 0.55, wet: 0.3, fog: 2.2, rain: 0, snow: 1 },
+  };
+  D.WEATHER_ORDER = ['sunny', 'cloudy', 'fog', 'rain', 'storm', 'snow'];
+
+  // ---------------------------------------------------------------- economy
+  D.ECONOMY = {
+    startCredits: 18000,
+    startCars: ['lodos', 'karayel'],
+    repairExplodePct: 0.25,
+    repairExplodeInsuredPct: 0.05,
+    repairHoursExplode: 2,
+    insurePct: 0.06,
+    premiumGrowth: 1.5,
+    towFee: 300,
+    roadsideFee: 400,
+    fuelPrice: { petrol: 42, diesel: 40 }, // per litre
+    repairPerPct: 0.004, // of car value per % damage
+    usedDiscount: 0.3,
+    sellPct: 0.5,
+    fines: { redLight: 350, speeding: 250, wrongWay: 200, pullOver: 750, busted: 3000, impound: 1500 },
+    points: { redLight: 10, speeding: 5, wrongWay: 5 },
+    collectible: 500,
+    skillToCredits: 0.1,
+  };
+
+  D.DIFFICULTY = {
+    arcade: { respawn: 3, rewind: Infinity },
+    normal: { rewind: 3 },
+    hardcore: { rewind: 0 },
+  };
+  D.REWARD = {
+    aiMult: [0.6, 0.72, 0.85, 1.0, 1.15, 1.3, 1.5, 1.75],
+    gearbox: { auto: 1.0, manual: 1.1, clutch: 1.2 },
+    assistPenalty: 0.04,
+    minAssistMult: 0.76,
+    positions: [1, 0.7, 0.5, 0.38, 0.3, 0.24, 0.18, 0.14, 0.1, 0.08, 0.06, 0.05],
+    champPoints: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1, 0, 0],
+  };
+  // 8 AI tiers: Çaylak → Efsane
+  D.AI_LEVELS = [
+    { pace: 0.8, corner: 0.82, shiftLo: 0.78, shiftHi: 1.03, shiftTime: 0.5, react: 0.65, mistake: 0.05 },
+    { pace: 0.84, corner: 0.86, shiftLo: 0.82, shiftHi: 1.02, shiftTime: 0.42, react: 0.55, mistake: 0.04 },
+    { pace: 0.87, corner: 0.89, shiftLo: 0.86, shiftHi: 1.0, shiftTime: 0.35, react: 0.45, mistake: 0.03 },
+    { pace: 0.9, corner: 0.91, shiftLo: 0.89, shiftHi: 0.99, shiftTime: 0.3, react: 0.38, mistake: 0.02 },
+    { pace: 0.93, corner: 0.935, shiftLo: 0.91, shiftHi: 0.985, shiftTime: 0.25, react: 0.32, mistake: 0.012 },
+    { pace: 0.96, corner: 0.955, shiftLo: 0.93, shiftHi: 0.98, shiftTime: 0.2, react: 0.26, mistake: 0.007 },
+    { pace: 0.985, corner: 0.975, shiftLo: 0.95, shiftHi: 0.975, shiftTime: 0.16, react: 0.21, mistake: 0.003 },
+    { pace: 1.01, corner: 0.995, shiftLo: 0.965, shiftHi: 0.97, shiftTime: 0.12, react: 0.17, mistake: 0 },
+  ];
+  D.AI_NAMES = ['Kerem', 'Defne', 'Mert', 'Zeynep', 'Baran', 'Elif', 'Kaan', 'Ada', 'Emir', 'Selin', 'Tuna', 'Nehir'];
+
+  // ---------------------------------------------------------------- tuning shop
+  D.UPGRADES = [
+    { id: 'turbo', group: 'engine', price: 9000, effect: { power: 0.14 } },
+    { id: 'exhaust', group: 'engine', price: 3200, effect: { power: 0.05 } },
+    { id: 'intake', group: 'engine', price: 2400, effect: { power: 0.04 } },
+    { id: 'ecu', group: 'engine', price: 4200, effect: { power: 0.07, rev: 300 } },
+    { id: 'shortShifter', group: 'trans', price: 1800, effect: { shifter: 0.6 } },
+    { id: 'clutchPlus', group: 'trans', price: 2600, effect: { clutchCap: 0.35 } },
+    { id: 'lsd', group: 'trans', price: 4500, effect: { lsd: 1 } },
+    { id: 'sportSusp', group: 'chassis', price: 5200, effect: { susp: 0.25 } },
+    { id: 'brakesPlus', group: 'chassis', price: 3800, effect: { brakes: 0.25 } },
+    { id: 'sportTires', group: 'chassis', price: 4200, effect: { grip: 0.07 } },
+    { id: 'semiSlick', group: 'chassis', price: 8800, effect: { grip: 0.14 } },
+    { id: 'weight', group: 'chassis', price: 6000, effect: { weight: 0.07 } },
+    { id: 'aero', group: 'chassis', price: 5000, effect: { aero: 0.6 } },
+  ];
+  // Forza-style tuning sliders: key, min, max, step, default (relative multipliers or absolute)
+  D.TUNE_SLIDERS = [
+    { key: 'g1', group: 'gears', min: 0.8, max: 1.25, step: 0.01, def: 1 },
+    { key: 'g2', group: 'gears', min: 0.8, max: 1.25, step: 0.01, def: 1 },
+    { key: 'g3', group: 'gears', min: 0.8, max: 1.25, step: 0.01, def: 1 },
+    { key: 'g4', group: 'gears', min: 0.8, max: 1.25, step: 0.01, def: 1 },
+    { key: 'g5', group: 'gears', min: 0.8, max: 1.25, step: 0.01, def: 1 },
+    { key: 'g6', group: 'gears', min: 0.8, max: 1.25, step: 0.01, def: 1 },
+    { key: 'final', group: 'gears', min: 0.8, max: 1.25, step: 0.01, def: 1 },
+    { key: 'pressF', group: 'tires', min: 1.6, max: 3.0, step: 0.05, def: 2.2 },
+    { key: 'pressR', group: 'tires', min: 1.6, max: 3.0, step: 0.05, def: 2.2 },
+    { key: 'camberF', group: 'align', min: -4, max: 0, step: 0.1, def: -1.0 },
+    { key: 'camberR', group: 'align', min: -4, max: 0, step: 0.1, def: -0.6 },
+    { key: 'toeF', group: 'align', min: -1, max: 1, step: 0.05, def: 0 },
+    { key: 'springF', group: 'springs', min: 0.7, max: 1.5, step: 0.01, def: 1 },
+    { key: 'springR', group: 'springs', min: 0.7, max: 1.5, step: 0.01, def: 1 },
+    { key: 'arbF', group: 'springs', min: 0.5, max: 2.0, step: 0.05, def: 1 },
+    { key: 'arbR', group: 'springs', min: 0.5, max: 2.0, step: 0.05, def: 1 },
+    { key: 'damp', group: 'springs', min: 0.7, max: 1.5, step: 0.01, def: 1 },
+    { key: 'brakeBias', group: 'brakes', min: 0.45, max: 0.75, step: 0.01, def: 0 },
+    { key: 'brakeForce', group: 'brakes', min: 0.8, max: 1.2, step: 0.01, def: 1 },
+    { key: 'diffLock', group: 'diff', min: 0, max: 1, step: 0.05, def: 0.4 },
+  ];
+  D.PAINT = [0xc8322b, 0x1f4e8c, 0xe8e3d6, 0x1b1d22, 0xf2b51f, 0x2f7d4f, 0x8b2fc9, 0xe46a17, 0x9aa3ad, 0x5bc0d8, 0xd94f8a, 0x6b4f3a];
+  D.FINISHES = ['gloss', 'matte', 'metal', 'chrome'];
+
+  // ---------------------------------------------------------------- settings
+  D.SETTINGS_DEFAULT = {
+    lang: 'tr',
+    units: 'kmh',
+    shifter: 'H',
+    clutchMode: null, // decided on first input: keyboard/wheel → manual, touch/gamepad → auto
+    stalling: true,
+    autoBlip: false,
+    hillAssist: false,
+    abs: true,
+    tcs: false,
+    esc: false,
+    suggestGear: true,
+    racingLine: true,
+    explosionRule: true,
+    thr61: 40,
+    thr6R: 10,
+    explodeAnySpeed: false,
+    explosionInRace: true,
+    slowmo: true,
+    explosionRewind: true,
+    difficulty: 'normal',
+    damage: 'full', // off | visual | full
+    police: true,
+    fines: true,
+    fuel: true,
+    aiLevel: 3,
+    traffic: 2,
+    peds: 2,
+    dayLength: 48,
+    timeFixed: false,
+    weather: 'dynamic',
+    touch: 'auto',
+    touchSteer: 'slider',
+    touchOpacity: 0.85,
+    steerSens: 1,
+    deadzone: 0.08,
+    ffb: 0.7,
+    gyroSens: 1,
+    quality: 'auto',
+    renderScale: 1,
+    fpsCap: 0,
+    vol: 0.8,
+    volEngine: 1,
+    volSfx: 1,
+    volMusic: 0.55,
+    volAmb: 0.6,
+    radio: 'off',
+    hud: { tach: true, map: true, damage: true, pedals: true, pattern: true, info: true },
+    colorblind: 'off',
+    bigText: false,
+    vibration: 1,
+    shake: 1,
+    clutchPress: 7,
+    clutchRelease: 1.8,
+    keys: null,
+    wheelMap: null,
+    touchLayout: null,
+  };
+
+  D.KEYS_DEFAULT = {
+    throttle: ['KeyW', 'ArrowUp'],
+    brake: ['KeyS', 'ArrowDown'],
+    left: ['KeyA', 'ArrowLeft'],
+    right: ['KeyD', 'ArrowRight'],
+    shiftUp: ['KeyE'],
+    shiftDown: ['KeyQ'],
+    clutch: ['ShiftLeft'],
+    halfClutch: ['AltLeft'],
+    handbrake: ['Space'],
+    ignition: ['KeyI'],
+    horn: ['KeyH'],
+    lights: ['KeyL'],
+    indL: ['KeyZ'],
+    indR: ['KeyX'],
+    hazard: ['KeyC'],
+    camera: ['KeyV'],
+    map: ['KeyM'],
+    rewind: ['Backspace'],
+    photo: ['KeyP'],
+    pause: ['Escape'],
+    interact: ['KeyF'],
+    tow: ['KeyT'],
+    radio: ['KeyG'],
+    gR: ['KeyR'],
+    gN: ['KeyN', 'Digit0'],
+    g1: ['Digit1'],
+    g2: ['Digit2'],
+    g3: ['Digit3'],
+    g4: ['Digit4'],
+    g5: ['Digit5'],
+    g6: ['Digit6'],
+    debug: ['F3'],
+    console: ['Backquote'],
+  };
+
+  D.ACHIEVEMENTS = ['vitesKirici', 'firstStart', 'firstStall', 'perfect10', 'license', 'firstWin', 'champion', 'nazar', 'drift', 'speed', 'escape', 'parking', 'hillStart', 'clutchless'];
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = SB;
+})(typeof window !== 'undefined' ? window : globalThis);
