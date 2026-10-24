@@ -1008,14 +1008,14 @@
       const now = g.env.time;
       const until = 24 + 8.2 - (now < 8.2 ? 24 : 0);
       this.phase = 'night';
-      this.night = { t: 0, dur: 180, h0: now, h1: until, extra: 0, wc: null, wt: 0, bail };
+      this.night = { t: 0, dur: 180, h0: now, h1: until, extra: 0, wc: null, wt: 0, bail, trips: 0, lates: 0 };
       this.dom.classList.remove('report');
       this.dom.classList.add('night');
       this.fade(0, 600);
       const el = document.getElementById('cineNight');
       el.hidden = false;
       const key = g.keyLabel('interact');
-      el.querySelector('.cn-wc').textContent = t('cine.n.wcBtn', { key });
+      el.querySelector('.cn-wc').textContent = t('cine.n.wcBtn', { key, n: 3 });
       el.querySelector('.cn-wc').onclick = (e) => { e.preventDefault(); this.nightKey(); };
       const pay = el.querySelector('.cn-pay');
       pay.textContent = t('cine.n.pay', { n: U.fmtInt(bail) });
@@ -1052,7 +1052,7 @@
         if (Math.random() < 0.5) this.sub(t('cine.who.officer'), t('cine.n.quiet'), 1.6);
       }
       this.wcBeats(dt);
-      document.querySelector('#cineNight .cn-wc').disabled = !!n.wc;
+      document.querySelector('#cineNight .cn-wc').disabled = !!n.wc || n.trips >= 3;
       if (n.t >= n.dur && !n.wc) this.endNight(false);
     }
     // F / the button: ask for the toilet, or come out of it
@@ -1061,6 +1061,10 @@
       if (!n || n.done) return;
       if (n.wc === 'in') { this.wcOut(false); return; }
       if (n.wc) return;
+      if (n.trips >= 3) { this.sub(t('cine.who.officer'), t('cine.n.noMore'), 1.8, true); return; }
+      n.trips++;
+      const btn = document.querySelector('#cineNight .cn-wc');
+      btn.textContent = n.trips >= 3 ? t('cine.n.wcNone') : t('cine.n.wcBtn', { key: this.game.keyLabel('interact'), n: 3 - n.trips });
       n.wc = 'called';
       n.wt = 0;
       this.D.doze = 0;
@@ -1153,9 +1157,11 @@
       n.wc = 'out';
       n.wt = 0;
       if (late) {
-        n.extra += 2;
+        n.lates++;
+        const h = 1 + n.lates;
+        n.extra += h;
         this.sub(t('cine.who.officer'), t('cine.n.wcLate'), 1.6, true);
-        this.big(t('cine.n.late'), 'bad');
+        this.big(t('cine.n.late', { h }), 'bad');
         g.hud.toast(t('cine.n.lateSub'), 'bad', 3);
       } else this.sub(t('cine.who.officer'), t('cine.n.ontime'), 1.4);
     }
