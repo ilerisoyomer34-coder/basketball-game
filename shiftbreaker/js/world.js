@@ -34,6 +34,12 @@
   ].filter((r) => r.len > 0);
   const HILL = { x: 735, z: 405, up: 30, flat: 18, down: 30, h: 3, w: 16 }; // license-course test slope
 
+  // deterministic 0..1 hash (keeps prop choices independent of the city's random stream)
+  function hash01(x, z) {
+    const h = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
+    return h - Math.floor(h);
+  }
+
   function zoneAt(x, z) {
     if (x > 360 && x < 640) return 'water';
     if (x >= 640) return 'east';
@@ -159,6 +165,8 @@
       this.jumps = RAMPS.map((r, i) => ({ id: 'jump' + i, x: r.x, z: r.z, ang: r.ang, len: r.len + r.len2 }));
       this.lampGlows = [];
       this.nightMats = [];
+      this.props = []; // GLB buildings, landmarks and stations: { id, x, y, z, rot }
+      this.unlitMats = []; // scanned (unlit) models, darkened at night
       this.time = 0;
       this.anisotropy = this.opts.anisotropy || 4;
       this.buildRoads();
@@ -555,6 +563,7 @@
       P('drag', 'drag', 790, -585, 0, { r: 10 });
       // landmarks
       reserve(-478, -478, -422, -422, 'mosque');
+      reserve(-235, -115, -125, -5, 'mosque', { garden: true });
       reserve(-358, -298, -302, -242, 'tower');
       reserve(-110, -110, -10, -14, 'park');
       reserve(-350, 10, -250, 110, 'park');
@@ -1089,6 +1098,8 @@
         const rz1 = rows === 1 ? z1 : row === 0 ? z0 + D / 2 - 1 : z1;
         let x = x0;
         while (x < x1 - 6) {
+          const model = this.modelLot(zone, x, x1, rz0, rz1, rows, row);
+          if (model) { x += model.lw; continue; }
           let lw = Math.min(x1 - x, lotMin + r() * (lotMax - lotMin));
           if (x1 - (x + lw) < lotMin * 0.6) lw = x1 - x;
           const gap = zone === 'historic' ? 0.2 : 1.5 + r() * 2;
@@ -1119,6 +1130,27 @@
         }
       }
     }
+    // Some lots get a real building model instead of a procedural block: Soviet panel towers and
+    // Stalin-era houses in the city, New York towers downtown; copies of one model stay 140 m apart.
+    modelLot(zone, x, x1, rz0, rz1, rows, row) {
+      const cand = { city: ['panel', 'stalin'], historic: ['stalin'], business: ['nyc', 'panel'] }[zone];
+      if (!cand || hash01(x * 0.37 + rz0 * 1.91, rz1 * 0.73 - x * 0.11) > 0.16) return null;
+      const id = cand[Math.floor(hash01(x * 1.3, rz0 * 2.7) * cand.length)];
+      const count = (this.modelCount = this.modelCount || {});
+      if ((count[id] || 0) >= { panel: 7, stalin: 9, nyc: 6 }[id]) return null;
+      const [fw, fd] = SB.DATA.PROPS[id].footprint;
+      const lw = fw + 3;
+      if (x + lw > x1 || rz1 - rz0 < fd + 1) return null;
+      const cx = x + lw / 2;
+      // the facade (+Z) faces the street on this row's side of the block
+      const faceNeg = rows === 2 ? row === 0 : hash01(cx, rz0) < 0.5;
+      const cz = faceNeg ? rz0 + fd / 2 + 0.5 : rz1 - fd / 2 - 0.5;
+      if (this.props.some((p) => p.id === id && Math.hypot(p.x - cx, p.z - cz) < 140)) return null;
+      const rot = faceNeg ? Math.PI : 0;
+      this.placeProp(id, cx, this.groundUnder(id, cx, cz, rot) - 0.3, cz, rot);
+      count[id] = (count[id] || 0) + 1;
+      return { lw };
+    }
     parkPatch(x0, z0, x1, z1) {
       this.treesExtra = this.treesExtra || [];
       for (let i = 0; i < 6; i++) this.treesExtra.push([U.lerp(x0, x1, this.rng()), U.lerp(z0, z1, this.rng()), 'round']);
@@ -1126,6 +1158,8 @@
     buildReserved(res, x0, z0, x1, z1) {
       res.rect = [x0, z0, x1, z1];
       if (res.kind === 'park') this.parkPatch(x0 + 4, z0 + 4, x1 - 4, z1 - 4);
+      // mosque garden: trees in the corners around the courtyard
+      if (res.kind === 'mosque' && res.garden) for (const [a, b] of [[x0 + 3, z0 + 3], [x1 - 25, z0 + 3], [x0 + 3, z1 - 25], [x1 - 25, z1 - 25]]) this.parkPatch(a, b, a + 22, b + 22);
       // POI/landmark geometry is built in buildLandmarks()
     }
     buildPortBlock() {
@@ -1255,23 +1289,54 @@
       this.group.add(m);
       return m;
     }
+    // ---------------------------------------------------------------- GLB props (buildings, landmarks, stations)
+    // Colliders go in at once (from SB.DATA.PROPS); the meshes arrive with loadProps().
+    placeProp(id, x, y, z, rot) {
+      const P = SB.DATA.PROPS[id];
+      const c = Math.cos(rot), s = Math.sin(rot);
+      for (const [x0, z0, x1, z1, y0, y1] of P.colliders) {
+        const lx = (x0 + x1) / 2, lz = (z0 + z1) / 2;
+        this.addCollider({ type: 'box', x: x + lx * c + lz * s, z: z - lx * s + lz * c, hl: (z1 - z0) / 2, hw: (x1 - x0) / 2, ang: rot, y0: y + y0 - 1, y1: y + y1, solid: true, prop: id });
+      }
+      this.props.push({ id, x, y, z, rot });
+    }
+    // lowest terrain under a prop's footprint (so it never floats on a slope)
+    groundUnder(id, x, z, rot) {
+      const [mn, mx] = SB.DATA.PROPS[id].bounds;
+      const c = Math.cos(rot), s = Math.sin(rot);
+      let h = Infinity;
+      for (const fx of [0, 0.5, 1]) for (const fz of [0, 0.5, 1]) {
+        const lx = mn[0] + (mx[0] - mn[0]) * fx, lz = mn[2] + (mx[2] - mn[2]) * fz;
+        h = Math.min(h, this.rawH(x + lx * c + lz * s, z - lx * s + lz * c));
+      }
+      return h;
+    }
+    loadProps() {
+      const ids = [...new Set(this.props.map((p) => p.id))].filter((id) => id !== 'trolley');
+      return Promise.all(ids.map((id) => SB.CarModel.loadGLB(SB.DATA.PROPS[id].url).then((scene) => {
+        scene.traverse((o) => {
+          if (!o.isMesh) return;
+          o.castShadow = this.quality !== 'low';
+          o.receiveShadow = true;
+          SB.CarModel.displayTextures(o.material);
+          if (o.material.isMeshBasicMaterial && !this.unlitMats.includes(o.material)) this.unlitMats.push(o.material);
+        });
+        for (const p of this.props) {
+          if (p.id !== id) continue;
+          const m = scene.clone();
+          m.position.set(p.x, p.y, p.z);
+          m.rotation.y = p.rot;
+          this.group.add(m);
+        }
+      }).catch((e) => console.warn('prop model failed to load:', id, e && e.message))));
+    }
     buildLandmarks() {
       const stone = new T.MeshStandardMaterial({ color: 0xd2cbbd, roughness: 0.85 });
       const lead = new T.MeshStandardMaterial({ color: 0x8c9399, roughness: 0.5, metalness: 0.3 });
       const T_ = (geo, mat, x, y, z) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = this.quality !== 'low'; m.receiveShadow = true; this.group.add(m); return m; };
-      // domed hilltop complex (generic Ottoman-era silhouette)
-      {
-        const cx = -450, cz = -450, gy = this.rawH(cx, cz) - 1;
-        T_(new T.BoxGeometry(34, 16, 34), stone, cx, gy + 8, cz);
-        T_(new T.SphereGeometry(13, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), lead, cx, gy + 16, cz);
-        for (const [dx, dz] of [[17, 0], [-17, 0], [0, 17], [0, -17]]) T_(new T.SphereGeometry(7, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), lead, cx + dx * 0.75, gy + 14, cz + dz * 0.75);
-        for (const [dx, dz] of [[21, 21], [-21, 21], [21, -21], [-21, -21]]) {
-          T_(new T.CylinderGeometry(1.3, 1.6, 52, 12), stone, cx + dx, gy + 26, cz + dz);
-          T_(new T.CylinderGeometry(2.1, 2.1, 1.2, 12), stone, cx + dx, gy + 40, cz + dz);
-          T_(new T.ConeGeometry(1.5, 9, 12), lead, cx + dx, gy + 56.5, cz + dz);
-        }
-        this.addCollider({ type: 'box', x: cx, z: cz, hl: 21.5, hw: 21.5, ang: 0, y0: gy, y1: gy + 30, solid: true });
-      }
+      // mosques: the Great Mosque of Tirana model on the hilltop and in a garden block downtown
+      this.placeProp('mosque', -450, this.groundUnder('mosque', -450, -450, 0) - 0.2, -450, 0);
+      this.placeProp('mosque', -180, this.groundUnder('mosque', -180, -60, 0) - 0.2, -60, 0);
       // round stone tower with a conical cap
       {
         const cx = -330, cz = -270, gy = this.rawH(cx, cz) - 1;
@@ -1302,25 +1367,17 @@
         const s = Math.sin(p.heading), c = Math.cos(p.heading);
         const back = (d, l) => [p.x - s * d + c * l, p.z - c * d - s * l];
         if (p.type === 'gas') {
-          const [bx, bz] = back(14, 0);
-          const roof = this.boxMesh(22, 0.8, 14, 0xe9e6df, bx, gy + 5.6, bz);
-          roof.rotation.y = p.heading;
-          for (const [dx, dz] of [[-8, -5], [8, -5], [-8, 5], [8, 5]]) {
-            const px = bx + c * dx - s * dz, pz = bz - s * dx - c * dz;
-            this.boxMesh(0.5, 5.4, 0.5, 0xcfcac0, px, gy + 2.7, pz);
-            this.addCollider({ type: 'circle', x: px, z: pz, r: 0.4, y0: gy, y1: gy + 6, solid: true });
-          }
-          for (const dx of [-4, 4]) {
-            const px = bx + c * dx, pz = bz - s * dx;
-            const pump = this.boxMesh(1, 1.8, 0.7, 0x2a6f9e, px, gy + 0.9, pz);
-            pump.rotation.y = p.heading;
-            this.addCollider({ type: 'box', x: px, z: pz, hl: 0.4, hw: 0.55, ang: p.heading, y0: gy, y1: gy + 2, solid: true });
-          }
+          // station model: forecourt edge 2 m behind the kerb marker, street side (+Z) facing the road
+          const P = SB.DATA.PROPS.gas;
+          const [ox, oz] = back(2 + P.bounds[1][2], 0);
+          this.placeProp('gas', ox, this.groundUnder('gas', ox, oz, p.heading) - 0.05, oz, p.heading);
           const [sx, sz] = back(-2, 13);
           this.boxMesh(0.4, 7, 0.4, 0x555555, sx, gy + 3.5, sz);
           this.sign(SB.i18n ? SB.i18n.t('poi.gas').toLocaleUpperCase('tr-TR') : 'AKARYAKIT', sx, gy + 7.2, sz, p.heading, 5.2, 1.5, '#1f5f8b');
-          const [kx, kz] = back(30, 0);
-          this.addBuilding({ x: kx, z: kz, hw: 8, hd: 5, y0: gy - 1, y1: gy + 4.5, color: 0xd9d4ca, kind: 'punched', roof: 'flat', zone: 'city' });
+          // the fuel marker moves under the canopy, beside the pump island
+          p.x = ox;
+          p.z = oz;
+          p.r = 6;
         } else if (p.type === 'repair' || p.type === 'modshop' || p.type === 'garage' || p.type === 'gallery') {
           const [bx, bz] = back(p.type === 'gallery' ? 30 : 34, 0);
           const color = { repair: 0xb7b0a2, modshop: 0x2b2f36, garage: 0xa8b0a0, gallery: 0xdfe6ea }[p.type];
@@ -1847,6 +1904,7 @@
         this.waterMat.uniforms.deepColor.value.setRGB(0.05 * (1 - env.night * 0.7), 0.16 * (1 - env.night * 0.8), 0.22 * (1 - env.night * 0.75));
         const n = env.night;
         for (const nm of this.nightMats) nm.mat.emissiveIntensity = nm.max * n;
+        for (const m of this.unlitMats) m.color.setScalar(U.lerp(1, 0.2, n));
         this.glowMat.opacity = n * 0.9;
         this.bridgeLightMat.color.setRGB(0.15 + 0.4 * n, 0.25 + 0.6 * n, 0.3 + 0.7 * n);
         const wet = env.wet;

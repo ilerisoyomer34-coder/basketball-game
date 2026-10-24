@@ -90,8 +90,14 @@
       this.ui = new SB.UI(this);
       await step(t('load.garage'));
       // the current car's model is fetched while loading (a slow network falls back to the simple body)
+      // the current car and the city's building / station models are fetched while loading
+      // (a slow network falls back to simple shapes until they arrive)
       const cur = SB.DATA.CARS[this.save.current];
-      if (cur.glb && T.GLTFLoader) await Promise.race([SB.CarModel.loadGLB(cur.glb.hi).catch(() => null), new Promise((r) => setTimeout(r, 12000))]);
+      if (T.GLTFLoader) {
+        const jobs = [this.world.loadProps()];
+        if (cur.glb) jobs.push(SB.CarModel.loadGLB(cur.glb.hi).catch(() => null));
+        await Promise.race([Promise.all(jobs), new Promise((r) => setTimeout(r, 15000))]);
+      }
       this.spawnPlayer(this.save.current);
       this.mode = new SB.Modes.FreeRoam(this);
       this.mode.setVisible(false);

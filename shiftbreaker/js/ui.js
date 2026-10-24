@@ -882,6 +882,11 @@
       body.appendChild(this.el('div', 'tips', rows));
       body.appendChild(this.el('div', 'tips how', t('tips.how', { ign: K('ignition'), clutch: K('clutch') })));
       body.appendChild(this.el('div', 'warnbox', t('tips.boom')));
+      // model credits (Sketchfab artists)
+      const cr = [];
+      for (const id of SB.DATA.CAR_ORDER) { const c = SB.DATA.CARS[id]; if (c.glb) cr.push([c.make + ' ' + c.name, c.glb.credit]); }
+      for (const [id, P] of Object.entries(SB.DATA.PROPS)) cr.push([t('prop.' + id), P.credit]);
+      body.appendChild(this.el('div', 'credits-list', `<h4>${esc(t('tips.credits'))}</h4>` + cr.map(([what, c]) => `<div><b>${esc(what)}</b> · ${this.carCredit(c).replace(/^<div class="credit">|<\/div>$/g, '')}</div>`).join('')));
       foot.appendChild(this.btn(esc(t('ui.ok')), () => (back ? back() : g.state === 'menu' ? this.mainMenu() : this.closeToPlay()), 'primary'));
       foot.appendChild(this.btn(esc(t('menu.license')), () => g.startLicense()));
       if (g.state === 'play') g.state = 'pause';

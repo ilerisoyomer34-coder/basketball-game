@@ -476,6 +476,11 @@
     for (const m of glbMats) m.envMapIntensity = (m.userData.envBase || 1) * k;
   }
   const rx = (s) => (s ? new RegExp(s) : null);
+  // The game renders to a linear framebuffer with colours authored for it (r128, no output gamma):
+  // GLB textures are used as stored, like the game's own canvas textures, instead of being sRGB-decoded.
+  function displayTextures(m) {
+    for (const k of ['map', 'emissiveMap']) if (m[k] && m[k].encoding !== T.LinearEncoding) { m[k].encoding = T.LinearEncoding; m.needsUpdate = true; }
+  }
   // material copies for one car instance: glass gets simple alpha (no transmission pass), paint a clear coat
   function prepareMaterial(src, cfg, look, cache) {
     if (cache.has(src)) return cache.get(src);
@@ -499,6 +504,7 @@
       if (src.type === 'MeshPhysicalMaterial') T.MeshStandardMaterial.prototype.copy.call(m, src);
     }
     m.name = src.name;
+    displayTextures(m);
     if (m.transparent) { m.depthWrite = false; m.opacity = Math.min(m.opacity, 0.6); }
     m.envMap = envMap;
     m.userData.envBase = m.metalness > 0.5 ? 1.0 : 0.7;
@@ -637,5 +643,5 @@
     return root;
   }
 
-  SB.CarModel = { buildPlayer, buildSimple, dent, PROFILES, paintMaterial, loadGLB, applyGLB, buildGLBSimple, initEnv, setEnvIntensity };
+  SB.CarModel = { buildPlayer, buildSimple, dent, PROFILES, paintMaterial, loadGLB, applyGLB, buildGLBSimple, initEnv, setEnvIntensity, displayTextures };
 })();

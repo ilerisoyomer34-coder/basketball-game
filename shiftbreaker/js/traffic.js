@@ -14,6 +14,8 @@
     truck: { cap: 6, mass: 7000, colors: [0xe8e6e0, 0x3a6ea5, 0xb83a2a], w: 1.2 },
     police: { cap: 6, mass: 1600, colors: [0xf4f4f4], w: 0 },
     van: { cap: 1, mass: 2000, colors: null, w: 0 },
+    // articulated trolleybus (GLB model, two sections): avenues and streets only
+    trolley: { cap: 2, mass: 16000, colors: null, w: 0.9, glb: true },
   };
   const _m = new T.Matrix4(), _q = new T.Quaternion(), _p = new T.Vector3(), _s = new T.Vector3(1, 1, 1), _up = new T.Vector3(0, 1, 0);
   const _e = { x: 0, z: 0, tx: 0, tz: 0 };
@@ -32,6 +34,8 @@
       this.models = {};
       const paintMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.25 });
       for (const [type, def] of Object.entries(TYPES)) {
+        this.free[type] = Array.from({ length: def.cap }, (_, i) => def.cap - 1 - i);
+        if (def.glb) continue;
         const md = SB.CarModel.buildSimple(type === 'van' ? 'van' : type);
         this.models[type] = md;
         const inst = new T.InstancedMesh(md.geo, paintMat, def.cap);
@@ -44,12 +48,88 @@
         for (let i = 0; i < def.cap; i++) { inst.setMatrixAt(i, _m); inst.setColorAt(i, c); }
         this.scene.add(inst);
         this.inst[type] = inst;
-        this.free[type] = Array.from({ length: def.cap }, (_, i) => def.cap - 1 - i);
       }
+      this.buildTrolleys();
       this.buildParked(paintMat);
       this.buildLights();
       this.buildPeds();
       this.spawnT = 0;
+    }
+
+    // ---------------------------------------------------------------- trolleybuses (articulated GLB model)
+    // The front section leads; the rear section pivots on the turntable and follows the joint's own trail.
+    buildTrolleys() {
+      const P = SB.DATA.PROPS.trolley;
+      this.tro = { Lf: P.bounds[1][2] - P.split, Lr: P.split - P.bounds[0][2], wid: P.footprint[0] };
+      this.models.trolley = { len: this.tro.Lf, wid: this.tro.wid };
+      this.trolleyViews = [];
+      for (let i = 0; i < TYPES.trolley.cap; i++) {
+        const grp = new T.Group(), front = new T.Group(), rear = new T.Group();
+        grp.add(front, rear);
+        grp.visible = false;
+        this.scene.add(grp);
+        this.trolleyViews.push({ grp, front, rear });
+      }
+      if (!T.GLTFLoader) return;
+      SB.CarModel.loadGLB(P.url).then((scene) => {
+        const joint = new T.Vector3(0, 0, P.split);
+        for (const v of this.trolleyViews) for (const part of ['front', 'rear']) {
+          const node = scene.getObjectByName(part).clone();
+          node.position.sub(joint); // both sections pivot on the joint (node matrices carry the dequantization)
+          node.traverse((o) => { if (o.isMesh) { o.castShadow = this.game.quality !== 'low'; o.receiveShadow = true; SB.CarModel.displayTextures(o.material); } });
+          v[part].add(node);
+        }
+        this.trolleyReady = true;
+      }).catch((e) => console.warn('trolleybus model failed to load:', e && e.message));
+    }
+    spawnTrolley(c) {
+      c.view = this.trolleyViews[c.idx];
+      c.view.grp.visible = true;
+      // straight trail behind the joint
+      const jx = c.x - c.tx * this.tro.Lf / 2, jz = c.z - c.tz * this.tro.Lf / 2;
+      c.trail = [];
+      for (let d = 0; d <= 12; d += 0.5) c.trail.push(jx - c.tx * d, jz - c.tz * d);
+      this.articulate(c);
+    }
+    articulate(c) {
+      const { Lf, Lr, wid } = this.tro;
+      const jx = c.x - c.tx * Lf / 2, jz = c.z - c.tz * Lf / 2;
+      const tr = c.trail;
+      if (Math.hypot(jx - tr[0], jz - tr[1]) > 0.5) { tr.unshift(jx, jz); if (tr.length > 80) tr.length = 80; }
+      // the rear axle runs on the joint's path ~0.7 of the rear section behind it
+      const dR = Lr * 0.7;
+      let d = 0, px = jx, pz = jz, rx = jx - c.tx * dR, rz = jz - c.tz * dR;
+      for (let i = 0; i < tr.length; i += 2) {
+        const seg = Math.hypot(tr[i] - px, tr[i + 1] - pz);
+        if (d + seg >= dR && seg > 1e-6) { const f = (dR - d) / seg; rx = px + (tr[i] - px) * f; rz = pz + (tr[i + 1] - pz) * f; break; }
+        d += seg; px = tr[i]; pz = tr[i + 1];
+      }
+      let hx = jx - rx, hz = jz - rz;
+      const hl = Math.hypot(hx, hz) || 1;
+      hx /= hl; hz /= hl;
+      const r = c.rear || (c.rear = { parent: c, type: 'trolley', isRear: true });
+      r.tx = hx; r.tz = hz;
+      r.yaw = Math.atan2(hx, hz);
+      r.x = jx - hx * Lr / 2; r.z = jz - hz * Lr / 2;
+      r.len = Lr; r.wid = wid;
+      r.speed = c.speed; r.vx = c.vx || 0; r.vz = c.vz || 0; r.mass = c.mass * 0.45; r.state = c.state;
+      c.jx = jx; c.jz = jz;
+    }
+    drawTrolley(c, lightsOn, light) {
+      const v = c.view, W = this.world;
+      const y = W.heightAt(c.jx, c.jz);
+      v.front.position.set(c.jx, y, c.jz);
+      v.front.rotation.y = c.yaw;
+      v.rear.position.set(c.jx, y, c.jz);
+      v.rear.rotation.y = c.rear.yaw;
+      const hw = c.wid / 2 - 0.35;
+      const lx = c.tz, lz = -c.tx, rlx = c.rear.tz, rlz = -c.rear.tx;
+      const fx = c.x + c.tx * this.tro.Lf / 2, fz = c.z + c.tz * this.tro.Lf / 2;
+      const bx = c.rear.x - c.rear.tx * this.tro.Lr / 2, bz = c.rear.z - c.rear.tz * this.tro.Lr / 2;
+      if (lightsOn && c.state !== 'crashed') for (const sg of [-1, 1]) light(fx + lx * hw * sg, y + 0.9, fz + lz * hw * sg, 1, 0.95, 0.8, 0.9, 1.0);
+      const braking = c.speed < 3 || (c.prevSpeed != null && c.speed < c.prevSpeed - 0.02);
+      c.prevSpeed = c.speed;
+      if (lightsOn || braking) for (const sg of [-1, 1]) light(bx + rlx * hw * sg, y + 1.0, bz + rlz * hw * sg, 1, 0.1, 0.05, braking ? 0.95 : 0.5, braking ? 0.8 : 0.5);
     }
 
     // ---------------------------------------------------------------- parked cars (static instances)
@@ -151,7 +231,7 @@
       return Math.round(base * (this.game.quality === 'low' ? 0.6 : 1));
     }
     pickType() {
-      const r = Math.random() * 25;
+      const r = Math.random() * Object.values(TYPES).reduce((a, d) => a + d.w, 0);
       let acc = 0;
       for (const [t, d] of Object.entries(TYPES)) { acc += d.w; if (r < acc) return t; }
       return 'sedan';
@@ -195,11 +275,13 @@
         if (l < 150 && (dx * f.x + dz * f.z) / (l * fl) > 0.4) return;
       }
       let type = this.pickType();
+      if (type === 'trolley' && (!this.trolleyReady || (e.kind !== 'avenue' && e.kind !== 'street'))) type = 'bus';
       if (e.kind === 'lane' || e.kind === 'hstreet' || e.kind === 'serp') if (type === 'bus' || type === 'truck') type = 'sedan';
       if (type === 'police') type = 'sedan';
       if (!this.free[type].length) return;
       c.type = type;
       c.idx = this.free[type].pop();
+      if (type === 'trolley') this.spawnTrolley(c);
       const md = this.models[type];
       c.len = md.len;
       c.wid = md.wid;
@@ -207,8 +289,10 @@
       c.limitF = 0.85 + Math.random() * 0.25;
       c.speed = Math.min(e.limit / 3.6, 10) * c.limitF;
       c.color = TYPES[type].colors ? U.pick(TYPES[type].colors) : U.pick(SB.DATA.PAINT);
-      this.inst[type].setColorAt(c.idx, new T.Color(c.color));
-      if (this.inst[type].instanceColor) this.inst[type].instanceColor.needsUpdate = true;
+      if (this.inst[type]) {
+        this.inst[type].setColorAt(c.idx, new T.Color(c.color));
+        if (this.inst[type].instanceColor) this.inst[type].instanceColor.needsUpdate = true;
+      }
       c.yaw = Math.atan2(c.tx, c.tz);
       c.blockedT = 0;
       c.honkT = 0;
@@ -217,7 +301,8 @@
     }
     remove(c) {
       _m.makeScale(0, 0, 0);
-      this.inst[c.type].setMatrixAt(c.idx, _m);
+      if (c.view) c.view.grp.visible = false;
+      else this.inst[c.type].setMatrixAt(c.idx, _m);
       this.free[c.type].push(c.idx);
       c.dead = true;
     }
@@ -290,7 +375,7 @@
       const pRect = player.carRect();
       const pfx = player.fwd.x, pfz = player.fwd.z;
       for (const c of this.cars) {
-        if (c.state === 'crashed') { this.updateCrashed(c, dt); continue; }
+        if (c.state === 'crashed') { this.updateCrashed(c, dt); if (c.view) this.articulate(c); continue; }
         // obstacle ahead (cars, player, police) via a forward probe
         let gap = 99, leadV = 99;
         const probe = (ox, oz, olen, ov) => {
@@ -302,7 +387,11 @@
           const g = f - (c.len + olen) / 2;
           if (g < gap) { gap = g; leadV = ov; }
         };
-        for (const o of this.cars) if (o !== c) probe(o.x, o.z, o.len, o.state === 'crashed' ? 0 : o.speed);
+        for (const o of this.cars) {
+          if (o === c) continue;
+          probe(o.x, o.z, o.len, o.state === 'crashed' ? 0 : o.speed);
+          if (o.rear) probe(o.rear.x, o.rear.z, o.rear.len, o.state === 'crashed' ? 0 : o.speed);
+        }
         for (const o of this.police) probe(o.x, o.z, o.len, o.speed);
         const pv = player.vel.x * c.tx + player.vel.z * c.tz;
         const before = gap;
@@ -360,6 +449,7 @@
         c.yaw = Math.atan2(c.tx, c.tz);
         c.vx = c.tx * c.speed;
         c.vz = c.tz * c.speed;
+        if (c.view) this.articulate(c);
         void pfx; void pfz;
       }
       this.updatePolice(dt, player);
@@ -389,6 +479,7 @@
 
     // player hit a traffic car (impulse already applied to the player)
     hit(c, res) {
+      if (c.parent) c = c.parent; // trolleybus rear section
       if (c.isPolice) { c.vx += res.dvx || 0; c.vz += res.dvz || 0; return; }
       if (c.state !== 'crashed') { c.vx = c.tx * c.speed; c.vz = c.tz * c.speed; }
       c.vx += res.dvx || 0;
@@ -402,7 +493,10 @@
     // all moving boxes near p (for the player's physics step)
     nearby(p, r) {
       const out = [];
-      for (const c of this.cars) if ((c.x - p.x) ** 2 + (c.z - p.z) ** 2 < r * r) out.push(c);
+      for (const c of this.cars) {
+        if ((c.x - p.x) ** 2 + (c.z - p.z) ** 2 < r * r) out.push(c);
+        if (c.rear && (c.rear.x - p.x) ** 2 + (c.rear.z - p.z) ** 2 < r * r) out.push(c.rear);
+      }
       for (const c of this.police) if ((c.x - p.x) ** 2 + (c.z - p.z) ** 2 < r * r) out.push(c);
       return out;
     }
@@ -621,6 +715,7 @@
       const used = {};
       for (const ty of Object.keys(this.inst)) used[ty] = 0;
       for (const c of all) {
+        if (c.view) { this.drawTrolley(c, lightsOn, light); continue; }
         const y = W.heightAt(c.x, c.z);
         _q.setFromAxisAngle(_up, c.yaw);
         _m.compose(_p.set(c.x, y, c.z), _q, _s);

@@ -32,6 +32,14 @@ const CARS = {
     wheelbase: 2.75,
     classify: (chain, mat) => (/Calliper/i.test(chain) ? 'body' : /Combined_Wheels_3D/.test(chain) || /Wheel1A_3D_3DWheel1A/.test(mat) ? 'wheel' : 'body'),
   },
+  lambo: {
+    paint: /^vehicle_generic_smallspecmap_PRIMARY$/,
+    keep: /^(material|przemo_l|hltex1_diff)$/, // lamp materials the game drives (must keep their names)
+    src: U + '389aeeb5-lamborghini_fenomeno_2026.glb',
+    wheelbase: 2.779,
+    flip: true, // modelled facing -Z
+    classify: (chain, mat) => (/caliper1_Caliper/i.test(chain) && /rims|tires|rotors/i.test(mat) ? 'wheel' : 'body'),
+  },
   clk: {
     paint: /^$/,
     src: U + '5d111c29-1998_mercedes-benz_clk_lm_2.glb',
@@ -229,7 +237,7 @@ for (const m of root.listMaterials()) {
   const untextured = (m) => !(m.getBaseColorTexture() || m.getNormalTexture() || m.getMetallicRoughnessTexture() || m.getEmissiveTexture() || m.getOcclusionTexture());
   for (const mesh of root.listMeshes()) for (const prim of mesh.listPrimitives()) {
     const m = prim.getMaterial();
-    if (!m || !untextured(m) || cfg.paint.test(m.getName())) continue;
+    if (!m || !untextured(m) || cfg.paint.test(m.getName()) || (cfg.keep && cfg.keep.test(m.getName()))) continue;
     const e = m.getEmissiveFactor();
     if (e[0] + e[1] + e[2] > 0.01) continue; // lights keep their own material
     const c = m.getBaseColorFactor();
@@ -267,7 +275,8 @@ const count = () => root.listMeshes().reduce((s, m) => s + meshTris(m), 0);
 const pruneSimplify = (p, ratio, err) => {
   const pos = p.getAttribute('POSITION');
   const idx = Uint32Array.from(triIndex(p));
-  const target = Math.max(3, Math.floor((idx.length * ratio) / 3) * 3);
+  if (idx.length < 6) return;
+  const target = Math.min(idx.length, Math.max(3, Math.floor((idx.length * ratio) / 3) * 3));
   const [out] = MeshoptSimplifier.simplify(idx, pos.getArray(), 3, target, err, ['Prune']);
   p.setIndices(doc.createAccessor().setType('SCALAR').setArray(Uint32Array.from(out)).setBuffer(root.listBuffers()[0]));
   compactPrimitive(p);
@@ -276,7 +285,8 @@ const pruneSimplify = (p, ratio, err) => {
 const sloppySimplify = (p, ratio, err) => {
   const pos = p.getAttribute('POSITION');
   const idx = Uint32Array.from(triIndex(p));
-  const target = Math.max(3, Math.floor((idx.length * ratio) / 3) * 3);
+  if (idx.length < 6) return;
+  const target = Math.min(idx.length, Math.max(3, Math.floor((idx.length * ratio) / 3) * 3));
   const [out] = MeshoptSimplifier.simplifySloppy(idx, pos.getArray(), 3, null, target, err);
   p.setIndices(doc.createAccessor().setType('SCALAR').setArray(Uint32Array.from(out)).setBuffer(root.listBuffers()[0]));
   compactPrimitive(p);

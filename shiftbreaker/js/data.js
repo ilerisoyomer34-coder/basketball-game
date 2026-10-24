@@ -389,8 +389,60 @@
         credit: { title: '1998 Mercedes-Benz CLK LM', author: 'OUTPISTON', license: 'CC BY-NC-SA 4.0', url: 'https://sketchfab.com/3d-models/1998-mercedes-benz-clk-lm-6748dd7c61824ddfa9065b351d683f8e' },
       },
     },
+    lambo: {
+      id: 'lambo',
+      make: 'Lamborghini',
+      name: 'Fenomeno',
+      cls: 'X',
+      drive: 'AWD',
+      gearbox: 'manual',
+      layout: 'A',
+      price: 260000,
+      fuelType: 'petrol',
+      fuelTank: 80,
+      body: 'track',
+      color: 0xe8b400,
+      mass: 1750,
+      weightFront: 0.43,
+      cgHeight: 0.4,
+      wheelbase: 2.779,
+      track: 1.68,
+      dims: { length: 4.95, width: 2.03, height: 1.13 },
+      inertiaScale: 0.82,
+      engine: {
+        type: 'V12 6.5 HPEV',
+        cylinders: 12,
+        idle: 950,
+        redline: 9500,
+        limiter: 9700,
+        stallRpm: 500,
+        maxTorque: 930,
+        inertia: 0.17,
+        fric0: 0.06,
+        fric1: 0.016,
+        // three electric motors fill the bottom end of the V12
+        curve: [[0, 0.55], [1000, 0.7], [2500, 0.85], [4500, 0.95], [6750, 1.0], [8000, 0.98], [9250, 0.88], [9800, 0.6], [11500, 0.3]],
+        turbo: null,
+      },
+      clutch: { bite: 0.5, band: 0.24, capacity: 1.6 },
+      gears: { ratios: [3.11, 2.19, 1.63, 1.29, 1.03, 0.84], reverse: 2.9, final: 4.34 },
+      diff: { type: 'lsd', preload: 140, bias: 0.55, k: 100 },
+      wheel: { radius: 0.349, width: 0.36, inertia: 1.5 },
+      tire: tire(1.25, 0.1, 0.13, 1.45),
+      susp: { restLen: 0.23, travel: 0.12, freq: 2.4, zeta: 0.46, arbF: 28000, arbR: 22000 },
+      brakes: { front: 4600, rear: 2900, hand: 2700 },
+      steer: { max: 0.52, rate: 3.2 },
+      aero: { cdA: 0.72, clA: 1.4 },
+      exhaust: [[0.18, 0.15, -2.3], [-0.18, 0.15, -2.3]],
+      glb: {
+        hi: 'models/lambo_hi.gltf.json', lo: 'models/lambo_lo.gltf.json',
+        paint: '^vehicle_generic_smallspecmap_PRIMARY$', lights: '^(material|przemo_l|hltex1_diff)$', lightsSplit: true,
+        eye: [0.36, 0.98, -0.05],
+        credit: { title: 'Lamborghini Fenomeno 2026', author: 'VTX', license: 'CC BY-NC-SA 4.0', url: 'https://sketchfab.com/3d-models/lamborghini-fenomeno-2026-e0cba33b773c4ce58fce3ae67421e62d' },
+      },
+    },
   };
-  D.CAR_ORDER = ['porsche', 'ferrari', 'bugatti', 'clk', 'lodos', 'karayel', 'poyraz'];
+  D.CAR_ORDER = ['lambo', 'porsche', 'ferrari', 'bugatti', 'clk', 'lodos', 'karayel', 'poyraz'];
 
   // Performance Index (PP 100–999) from power/weight, grip, and aero.
   D.performancePoints = (car, tune) => {
@@ -428,7 +480,7 @@
   // ---------------------------------------------------------------- economy
   D.ECONOMY = {
     startCredits: 18000,
-    startCars: ['lodos', 'karayel', 'porsche', 'ferrari', 'bugatti', 'clk'],
+    startCars: ['lodos', 'karayel', 'porsche', 'ferrari', 'bugatti', 'clk', 'lambo'],
     repairExplodePct: 0.25,
     repairExplodeInsuredPct: 0.05,
     repairHoursExplode: 2,
