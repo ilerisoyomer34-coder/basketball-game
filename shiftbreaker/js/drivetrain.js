@@ -73,7 +73,7 @@
 
   const ORDER = [-1, 0, 1, 2, 3, 4, 5, 6];
   const STATE_KEYS = [
-    'omegaE', 'running', 'cranking', 'crankT', 'crankNeed', 'startGrace', 'fuelCut', 'boost', 'idleI', 'locked',
+    'omegaE', 'running', 'cranking', 'autoCrank', 'crankT', 'crankNeed', 'startGrace', 'fuelCut', 'boost', 'idleI', 'locked',
     'state', 'gear', 'target', 'selT', 'selDur', 'grindKind', 'grindT', 'forceT', 'releasedT', 'lastEngaged',
     'left6At', 'seqChain', 'seqChainStart', 'pendingOverRev', 'exploded', 'seized', 'clutchTemp', 'engineTemp',
     'fuel', 'wrongFuel', 'time', 'lockupT', 'misfireT', 'lugging', 'shiftDirLast', 'leaveRpm', 'leaveTime',
@@ -115,6 +115,7 @@
       this.omegaE = 0;
       this.running = false;
       this.cranking = false;
+      this.autoCrank = false;
       this.crankT = 0;
       this.crankNeed = 1;
       this.startGrace = 0;
@@ -550,7 +551,9 @@
         ac.phase = 'idle';
       }
       let target;
-      if (this.state !== 'ENG' || this.cranking) target = 1;
+      // dog box: shifts stay clutchless (engaged through SEL); only launches and stops use the clutch
+      if (this.dogBox() && this.state === 'SEL') target = 0;
+      else if (this.state !== 'ENG' || this.cranking) target = 1;
       else if (!this.running) target = 0;
       else {
         const e = this.car.engine;
@@ -559,14 +562,14 @@
         const thr = this.input.throttle;
         // hard braking: disengage early so locked/slow wheels can't drag the engine down
         if (this.input.brake > 0.6 && rpm < e.idle + 900) target = 1;
-        else if (wheelRpm < e.idle + 300) {
+        // launch: the harder the throttle, the longer the clutch slips to keep the engine on boost
+        else if (wheelRpm < e.idle + 300 + 1100 * thr) {
           let eT;
+          const launch = e.idle + 600 + 2400 * thr;
           if (thr < 0.04) eT = this.input.brake > 0.1 ? 0 : clamp((rpm - (e.idle - 120)) / 500, 0, 0.42);
-          else {
-            const launch = e.idle + 600 + 2400 * thr;
-            eT = clamp((rpm - (e.idle + 200)) / Math.max(250, launch - e.idle - 200), 0, 1);
-          }
-          if (wheelRpm > rpm - 120 && rpm > e.idle - 50) eT = 1;
+          else eT = clamp((rpm - (e.idle + 200)) / Math.max(250, launch - e.idle - 200), 0, 1);
+          // synced with the wheels → close it, unless a hard launch has bogged the engine below its band
+          if (wheelRpm > rpm - 120 && rpm > e.idle - 50 && (thr < 0.3 || rpm > launch * 0.75)) eT = 1;
           if (rpm < e.idle - 90) eT = Math.min(eT, 0.06);
           target = this.pedalForEng(eT);
         } else target = 0;
@@ -579,7 +582,7 @@
     updateClutch(h) {
       let p;
       if (this.exploded) p = 0;
-      else if (this.opts.autoClutch && !this.dogBox()) p = this.autoClutch(h);
+      else if (this.opts.autoClutch) p = this.autoClutch(h);
       else p = clamp(this.input.clutch, 0, 1);
       this.clutchPedal = p;
       this.engagement = this.engFromPedal(p);
@@ -595,8 +598,10 @@
       const inp = this.input;
       const rpm = this.rpm();
       // pedal → torque fraction: progressive, small openings give most of the torque at low rpm
-      const ped = clamp(inp.throttle, 0, 1) * (inp.tcs == null ? 1 : inp.tcs);
+      const ped = clamp(inp.throttle, 0, 1);
       let thr = 1 - Math.pow(1 - ped, 2 + 2.5 * clamp(1 - rpm / this.redline(), 0, 1));
+      // traction control trims torque, not pedal (the progressive map would hide a pedal cut)
+      if (inp.tcs != null) thr *= inp.tcs;
       // automatic blip on downshifts (assist, auto clutch, or dog box)
       if ((this.opts.autoBlip || this.opts.autoClutch || this.dogBox()) && this.shiftDirLast < 0) {
         const busy = this.state === 'SEL' || (this.state === 'ENG' && this.engagement < 0.6 && this.time - (this.engagedAt || -9) < 0.6);
@@ -647,9 +652,12 @@
       }
       if (!ign) this.ignLatch = false;
       this.prevIgnition = ign;
-      if (!this.running && ign && !this.ignLatch && !this.exploded && !this.seized) {
+      // push-button start: a tap keeps the starter turning until the engine fires (or gives up)
+      if (this.exploded || this.seized || this.running) this.autoCrank = false;
+      if (!this.running && (ign || this.autoCrank) && !this.ignLatch && !this.exploded && !this.seized) {
         if (!this.cranking) {
           this.cranking = true;
+          this.autoCrank = true;
           this.crankT = 0;
           this.crankNeed = R.starter.minCrank + Math.random() * (R.starter.maxCrank - R.starter.minCrank);
           this.emit('crank');
@@ -657,6 +665,7 @@
         this.crankT += h;
         if (this.crankT >= this.crankNeed && this.health.engine > 0 && this.fuel > 0) {
           this.cranking = false;
+          this.autoCrank = false;
           const inGear = this.state === 'ENG' && this.engagement > 0.3 && !this.opts.autoClutch;
           if (inGear) {
             // fires against a loaded driveline: the car lurches and the engine dies
@@ -670,7 +679,10 @@
             if (this.omegaE < 300 * RPM2W) this.omegaE = 300 * RPM2W;
             this.emit('start');
           }
-        } else if (this.crankT >= this.crankNeed && this.fuel <= 0) this.emit('noFuel', null, 2);
+        } else if (this.crankT >= this.crankNeed && this.fuel <= 0) {
+          this.emit('noFuel', null, 2);
+          this.autoCrank = false;
+        } else if (this.crankT > R.starter.maxCrank + 1.5) this.autoCrank = false;
       } else if (this.cranking) {
         this.cranking = false;
         this.emit('crankStop');

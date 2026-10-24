@@ -84,6 +84,10 @@
       clearTimeout(this._bigT);
       this._bigT = setTimeout(() => (el.hidden = true), (dur || 2) * 1000);
     }
+    clearBig() {
+      clearTimeout(this._bigT);
+      $('bigmsg').hidden = true;
+    }
     prompt(text) {
       const el = $('prompt');
       if (!text) { if (!el.hidden) el.hidden = true; return; }

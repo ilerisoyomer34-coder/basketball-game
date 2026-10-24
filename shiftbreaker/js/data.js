@@ -308,15 +308,16 @@
 
   // ---------------------------------------------------------------- settings
   D.SETTINGS_DEFAULT = {
+    rev: 2, // bump to migrate stored settings (see Game constructor)
     lang: 'tr',
     units: 'kmh',
     shifter: 'H',
-    clutchMode: null, // decided on first input: keyboard/wheel → manual, touch/gamepad → auto
+    clutchMode: 'auto', // manual clutch is opt-in (settings → driving)
     stalling: true,
     autoBlip: false,
     hillAssist: false,
     abs: true,
-    tcs: false,
+    tcs: true,
     esc: false,
     suggestGear: true,
     racingLine: true,

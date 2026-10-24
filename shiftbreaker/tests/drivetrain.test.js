@@ -25,6 +25,23 @@ console.log('\nKontak & marş');
 }
 {
   const s = makeSim('lodos');
+  s.dt.input.ignition = true;
+  s.run(0.05);
+  s.dt.input.ignition = false;
+  s.run(2);
+  check('kontağa kısa dokunuş → marş motor çalışana dek döner', s.dt.running && !s.dt.cranking, 'rpm ' + s.dt.rpm().toFixed(0));
+}
+{
+  const s = makeSim('lodos');
+  s.dt.fuel = 0;
+  s.dt.input.ignition = true;
+  s.run(0.05);
+  s.dt.input.ignition = false;
+  s.run(4);
+  check('yakıt yokken kısa dokunuş → marş kendiliğinden durur', !s.dt.running && !s.dt.cranking && s.has('noFuel'), s.ev.map((e) => e.type).join(','));
+}
+{
+  const s = makeSim('lodos');
   s.dt.input.clutch = 1;
   s.run(0.2);
   s.dt.requestGear(1);
@@ -279,6 +296,24 @@ console.log('\nOtomatik debriyaj');
   s.brake = 1;
   s.run(4);
   check('otomatik debriyaj frenle durunca stop ettirmez', s.dt.running && Math.abs(s.v) < 0.2);
+}
+{
+  const s = makeSim('lodos', { autoClutch: true });
+  startEngine(s);
+  s.dt.requestGear(1, true);
+  s.run(0.5);
+  s.dt.input.throttle = 1;
+  s.run(3);
+  check('otomatik debriyajla tam gaz kalkış: 3 sn’de 40 km/s üstü', s.dt.running && s.kmh() > 40, s.kmh().toFixed(1));
+}
+{
+  const s = makeSim('poyraz', { autoClutch: true });
+  startEngine(s);
+  s.dt.shiftUp(true);
+  s.run(0.5);
+  s.dt.input.throttle = 0.6;
+  s.run(3);
+  check('dog box + otomatik debriyaj → stop etmeden kalkar', s.dt.running && !s.has('stall') && s.kmh() > 30, s.kmh().toFixed(1));
 }
 
 console.log(`\n${passed} geçti, ${failed} kaldı`);

@@ -13,7 +13,9 @@
       this.game = game;
       this.down = new Set();
       this.state = { throttle: 0, brake: 0, steer: 0, clutch: 0, handbrake: 0, lookX: 0, lookY: 0 };
-      this.device = 'keyboard';
+      // phones and tablets start out as touch so the first hints name the on-screen controls
+      this.device = window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard';
+      document.body.dataset.device = this.device;
       this.holdKey = null;
       this.touch = { steer: 0, gas: 0, brake: 0, clutch: 0, hand: 0, left: false, right: false, active: false };
       this.gp = { prev: [], hgear: null, look: { x: 0, y: 0 } };
@@ -74,11 +76,6 @@
     setDevice(d) {
       if (this.device === d) return;
       this.device = d;
-      const s = this.game.settings;
-      if (s.clutchMode == null) {
-        s.clutchMode = d === 'keyboard' || d === 'wheel' ? 'manual' : 'auto';
-        this.game.applySettings();
-      }
       this.game.hud && this.game.hud.setDevice(d);
     }
 
@@ -90,6 +87,8 @@
       }
       const car = g.player;
       const dt = car && car.dt;
+      // a quick tap can start and end between two frames: latch it for the next one
+      if (a === 'ignition' && isDown) this.ignTap = true;
       if (a in GEAR_ACTIONS) {
         if (!dt) return;
         if (isDown) {
@@ -171,7 +170,8 @@
       // dead zone
       if (Math.abs(st.steer) < (this.device === 'keyboard' ? 0 : s.deadzone)) st.steer = 0;
       // ignition is a held action from any device
-      this.ignitionHeld = this.held('ignition') || this.touch.ign || (this.gp.vals && this.gp.vals.ign);
+      this.ignitionHeld = this.held('ignition') || this.touch.ign || (this.gp.vals && this.gp.vals.ign) || !!this.ignTap;
+      this.ignTap = false;
       this.rewindHeld = this.held('rewind') || this.touch.rewind || (this.gp.vals && this.gp.vals.rewind);
     }
 
@@ -371,7 +371,7 @@
         if (onUp) { b.addEventListener('pointerup', onUp); b.addEventListener('pointercancel', onUp); b.addEventListener('pointerleave', onUp); }
         return b;
       };
-      btn('ign', t9('touch.ign'), () => (t.ign = true), () => (t.ign = false));
+      btn('ign', t9('touch.ign'), () => { t.ign = true; this.ignTap = true; }, () => (t.ign = false));
       btn('cam', '🎥', () => this.game.action('camera', true));
       btn('horn', '📯', () => this.game.action('horn', true), () => this.game.action('horn', false));
       btn('lights', '💡', () => this.game.action('lights', true));

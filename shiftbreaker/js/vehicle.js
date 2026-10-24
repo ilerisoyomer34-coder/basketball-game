@@ -228,7 +228,9 @@
       if (st.tcs) {
         let maxSr = 0;
         for (const w of this.driven) if (w.contact) maxSr = Math.max(maxSr, (w.omega * w.R - w.vx) / Math.max(Math.abs(w.vx), 3));
-        this.tcsF = maxSr > 0.16 ? Math.max(0.15, this.tcsF - h * 6) : Math.min(1, this.tcsF + h * 2.5);
+        // proportional cut around the tyre's peak slip, so the wheels keep pulling instead of bogging
+        const over = maxSr - car.tire.peakSlip * 1.6;
+        this.tcsF = over > 0 ? Math.max(0.3, this.tcsF - h * (2 + 15 * over)) : Math.min(1, this.tcsF + h * 4);
         if (this.tcsF < 0.95) this.tcsActive = 0.2;
       } else this.tcsF = 1;
       // ESC: reduce throttle and brake the outer front wheel on oversteer

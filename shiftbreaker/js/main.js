@@ -17,13 +17,14 @@
 
   class Game {
     constructor() {
-      this.settings = U.deepMerge(U.clone(SB.DATA.SETTINGS_DEFAULT), U.store.get(SET_KEY, {}));
+      const stored = U.store.get(SET_KEY, {});
+      // rev 2: automatic clutch and traction control became the defaults for every device
+      if (!(stored.rev >= 2)) { delete stored.clutchMode; delete stored.tcs; }
+      this.settings = U.deepMerge(U.clone(SB.DATA.SETTINGS_DEFAULT), stored);
+      this.settings.rev = SB.DATA.SETTINGS_DEFAULT.rev;
       this.save = U.deepMerge(defaultSave(), U.store.get(SAVE_KEY, {}));
       SB.i18n.setLang(this.settings.lang);
-      if (this.settings.clutchMode == null) {
-        const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-        this.settings.clutchMode = coarse ? 'auto' : 'manual';
-      }
+      if (this.settings.clutchMode !== 'manual') this.settings.clutchMode = 'auto';
       this.quality = this.pickQuality();
       this.time = 0;
       this.timeScale = 1;
@@ -627,6 +628,7 @@
           this.save.stats.km += Math.abs(p.speed) * gdt / 1000;
           if (p.submerged > 2) this.onWater();
           this.reverseAids();
+          this.coach(gdt);
         }
       } else if (this.state === 'replay') this.updateReplay(rdt);
       else if (this.state === 'menu') {
@@ -646,6 +648,38 @@
       this.render();
       if (this.state === 'play' || this.state === 'result' || this.state === 'map' || this.state === 'pause') this.hud.update(rdt);
       this.input.updateTouchWidget();
+    }
+    // pulling-away coach: when the throttle can't move the car, say why
+    coachHint(key) {
+      const d = this.player.dt, touch = this.input.device === 'touch';
+      const seq = this.settings.shifter === 'SEQ' || d.dogBox() || this.input.device === 'gamepad';
+      if (key === 'neutral' || key === 'started') key = seq ? 'neutralSeq' : d.opts.autoClutch ? 'neutral' : 'neutralClutch';
+      const vars = { ign: this.keyLabel('ignition'), clutch: this.keyLabel('clutch'), hand: this.keyLabel('handbrake'), up: this.keyLabel('shiftUp'), g1: this.keyLabel('g1') };
+      return t('coach.' + key + (touch ? '.touch' : ''), vars);
+    }
+    coach(dt) {
+      const p = this.player, d = p.dt, st = this.input.state;
+      if (this.startHintT != null && (this.startHintT -= dt) <= 0) {
+        this.startHintT = null;
+        if (d.running && d.state === 'N' && Math.abs(p.speed) < 1) { this.hud.big(t('coach.started.t'), this.coachHint('started'), 4); this.coachShown = true; }
+      }
+      // the hint goes away as soon as the car pulls away
+      if (this.coachShown && Math.abs(p.speed) > 1.5) { this.coachShown = false; this.hud.clearBig(); }
+      this.coachCd = Math.max(0, (this.coachCd || 0) - dt);
+      const stuck = st.throttle > 0.3 && Math.abs(p.speed) < 1 && !p.exploded && !d.seized && !this.lockPlayer && !this.cinematic;
+      this.coachT = stuck ? (this.coachT || 0) + dt : 0;
+      if (this.coachT < 0.6 || this.coachCd > 0) return;
+      let key = null;
+      if (!d.running && !d.cranking) key = 'engineOff';
+      else if (!d.running) return;
+      else if (d.state === 'N' || d.state === 'GRIND') key = 'neutral';
+      else if (d.state === 'ENG' && !d.opts.autoClutch && d.clutchPedal > 0.8) key = 'clutchDown';
+      else if (st.handbrake > 0.5) key = 'handbrake';
+      if (!key) return;
+      this.hud.big(t('coach.' + key + '.t'), this.coachHint(key), 3, 'warn');
+      this.coachShown = true;
+      this.coachCd = 4.5;
+      this.coachT = 0;
     }
     tickClock(gdt) {
       if (this._lastClock != null && this.env.time < this._lastClock - 12) this.save.day = (this.save.day || 1) + 1;
@@ -716,6 +750,8 @@
             A.catchStart();
             this.ignitionOn = true;
             this.save.stats.starts++;
+            // next step after the first start of the session (after the achievement banner, if one shows)
+            if (!this.startHintShown && !this.lockPlayer) { this.startHintShown = true; this.startHintT = this.save.achievements.firstStart ? 0.4 : 3; }
             this.achieve('firstStart');
             break;
           case 'off': this.ignitionOn = false; hud.toast(t('msg.engineOff'), 'info', 1.4); break;
