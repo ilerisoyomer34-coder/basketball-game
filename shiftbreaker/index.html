@@ -79,8 +79,56 @@
   .hud-bl { position: absolute; left: max(14px, env(safe-area-inset-left, 0px)); bottom: max(12px, env(safe-area-inset-bottom, 0px)); display: flex; gap: 10px; align-items: flex-end; }
   #mapWrap { position: relative; width: 170px; height: 170px; border-radius: 50%; box-shadow: 0 6px 24px rgba(0,0,0,0.45); }
   .topbar { position: absolute; top: max(10px, env(safe-area-inset-top, 0px)); right: max(14px, env(safe-area-inset-right, 0px)); display: flex; gap: 12px; align-items: center; font: 600 15px/1 var(--mono); background: rgba(12,13,17,0.62); padding: 7px 12px; border-radius: 6px; }
-  #wanted { color: var(--red); letter-spacing: 2px; }
-  #wanted b { color: #ff3b30; text-shadow: 0 0 8px #ff3b30; }
+  /* police pursuit panel */
+  #chase { background: rgba(12,13,17,0.8); border: 1px solid rgba(255,59,48,0.35); border-radius: 8px; padding: 8px 12px 10px; width: 290px; box-sizing: border-box; display: grid; gap: 6px; box-shadow: 0 0 0 0 rgba(255,59,48,0); }
+  #chase .ch-top, #chase .ch-mid { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  #chStars { font-size: 21px; letter-spacing: 2px; color: rgba(255,255,255,0.28); }
+  #chStars b { color: #ff3b30; text-shadow: 0 0 8px #ff3b30; font-weight: 400; }
+  #chTime { font: 600 15px/1 var(--mono); color: var(--ink2); }
+  #chState { font: 700 12px/1 var(--display); letter-spacing: 0.05em; text-transform: uppercase; color: #ffb4a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #chBounty { font: 700 14px/1 var(--mono); color: var(--amber); white-space: nowrap; }
+  .ch-bar { position: relative; height: 15px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+  .ch-bar i { position: absolute; inset: 0 auto 0 0; width: 0; transition: width 0.15s linear; }
+  .ch-bar.ev i { background: linear-gradient(90deg, #1f9d55, #3fd47a); }
+  .ch-bar.bu i { background: linear-gradient(90deg, #b3261e, #ff4b3a); }
+  .ch-bar span { position: relative; display: block; font: 700 11px/15px var(--display); letter-spacing: 0.12em; text-transform: uppercase; padding-left: 6px; color: rgba(255,255,255,0.85); }
+  #chase.busting { animation: chPulse 0.5s ease-in-out infinite alternate; }
+  #chase.heli #chState { color: #fff1c8; }
+  @keyframes chPulse { to { box-shadow: 0 0 22px 2px rgba(255,59,48,0.55); border-color: #ff3b30; } }
+  #sirenGlow { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+  #sirenGlow::before, #sirenGlow::after { content: ''; position: absolute; inset: 0; animation: siren 0.55s steps(1) infinite; }
+  #sirenGlow::before { background: radial-gradient(ellipse at 0% 50%, rgba(255,30,30,0.55), transparent 45%); }
+  #sirenGlow::after { background: radial-gradient(ellipse at 100% 50%, rgba(30,90,255,0.55), transparent 45%); animation-delay: 0.275s; }
+  @keyframes siren { 0% { opacity: 1; } 50% { opacity: 0.15; } }
+  .toast.radio { border-color: #2f7dff; color: #cfe0ff; text-transform: none; font-weight: 600; }
+  /* police scenes: letterbox, subtitles, fade */
+  .cine { position: fixed; inset: 0; z-index: 15; pointer-events: none; }
+  .cine-bar { position: absolute; left: 0; right: 0; height: 11vh; background: #000; transition: height 0.6s ease; }
+  .cine.report .cine-bar { height: 0; }
+  .cine-bar.top { top: 0; } .cine-bar.bot { bottom: 0; }
+  #cineSub { position: absolute; left: 50%; bottom: calc(11vh + 18px); transform: translateX(-50%); width: min(820px, 92vw); text-align: center; opacity: 0; transition: opacity 0.25s; text-shadow: 0 2px 10px #000; }
+  #cineSub.show { opacity: 1; }
+  #cineSub b { display: block; font: 700 14px/1.2 var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: #8fb6ff; margin-bottom: 3px; }
+  #cineSub span { font: 700 clamp(19px, 3vw, 30px)/1.2 var(--display); color: #fff; }
+  #cineBig { position: absolute; left: 50%; top: 22%; transform: translate(-50%, -50%) scale(1.3); font: 800 clamp(30px, 7vw, 72px)/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; color: #fff; opacity: 0; text-shadow: 0 0 26px rgba(0,0,0,0.8); }
+  #cineBig.show { animation: cineBig 2.2s ease-out forwards; }
+  #cineBig.bad { color: #ff5b45; }
+  @keyframes cineBig { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.4); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
+  #cineSkip { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(11vh - 40px); pointer-events: auto; font: 700 14px/1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 8px 12px; cursor: pointer; }
+  #cineFade { position: absolute; inset: 0; background: #000; opacity: 0; }
+  /* arrest report */
+  .bust { width: min(720px, 94vw); }
+  .bust-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .bust-photo { position: relative; border-radius: 6px; overflow: hidden; background: #111; aspect-ratio: 16 / 9; border: 1px solid var(--line); }
+  .bust-photo img { width: 100%; height: 100%; object-fit: cover; display: block; filter: contrast(1.05) saturate(0.85); }
+  .bust-photo .stamp { position: absolute; right: 8px; bottom: 10px; transform: rotate(-9deg); border: 3px solid #e5372a; color: #e5372a; font: 800 22px/1 var(--display); letter-spacing: 0.1em; padding: 4px 10px; border-radius: 4px; background: rgba(0,0,0,0.25); }
+  .bust-photo .cap { position: absolute; left: 8px; top: 8px; font: 600 12px/1 var(--mono); color: #fff; background: rgba(0,0,0,0.55); padding: 4px 6px; border-radius: 3px; }
+  .bust-rows { display: grid; gap: 7px; }
+  .bust-rows div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dashed var(--line); padding-bottom: 6px; font-size: 16px; }
+  .bust-rows div b { font-family: var(--mono); font-weight: 600; }
+  .bust-rows .tot { border-bottom: 0; font-size: 18px; color: #ff8f80; }
+  .bust-rows div b { white-space: nowrap; }
+  @media (max-width: 640px) { .bust-grid { grid-template-columns: 1fr; } }
   #toasts { position: absolute; top: max(12px, env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; width: min(560px, 90vw); }
   .toast { font: 700 17px/1.2 var(--display); letter-spacing: 0.03em; text-transform: uppercase; padding: 7px 14px; border-radius: 5px; background: rgba(12,13,17,0.82); border-bottom: 2px solid var(--ink2); transition: opacity 0.35s, transform 0.35s; text-align: center; }
   .toast.good { border-color: var(--good); } .toast.warn { border-color: var(--warn); color: #ffe2b0; } .toast.bad { border-color: var(--bad); color: #ffd2c8; }
@@ -194,6 +242,9 @@
   body.touchui .hud-bl { top: calc(max(10px, env(safe-area-inset-top, 0px)) + 4px); bottom: auto; transform: scale(0.72); transform-origin: top left; }
   body.touchui #damage { display: none; }
   body.touchui .hud-tl { top: calc(max(12px, env(safe-area-inset-top, 0px)) + 130px); }
+  body.touchui #chase { width: 230px; padding: 6px 9px 8px; gap: 4px; }
+  body.touchui #chBounty { font-size: 12px; }
+  body.touchui #chStars { font-size: 17px; }
   body.touchui #prompt { bottom: 38vh; }
   body.touchui #revcam { bottom: auto; top: 60px; width: 26vw; }
   body.bigtext .toast, body.bigtext .rp-row, body.bigtext #lesson { font-size: 120%; }
@@ -337,8 +388,16 @@
 <canvas id="view" aria-label="SHIFTBREAKER"></canvas>
 
 <div id="hud" class="hidden">
-  <div class="hud-tl"><div id="racePanel" hidden></div><div id="lesson" hidden></div></div>
-  <div class="topbar"><span id="wanted" hidden></span><span id="credits"></span><span id="clock"></span><span id="weatherIco"></span></div>
+  <div id="sirenGlow"></div>
+  <div class="hud-tl"><div id="racePanel" hidden></div><div id="lesson" hidden></div>
+    <div id="chase" hidden>
+      <div class="ch-top"><span id="chStars"></span><span id="chTime"></span></div>
+      <div class="ch-mid"><span id="chState"></span><span id="chBounty"></span></div>
+      <div class="ch-bar ev"><i id="chEv"></i><span data-i18n="chase.escape"></span></div>
+      <div class="ch-bar bu"><i id="chBu"></i><span data-i18n="chase.bust"></span></div>
+    </div>
+  </div>
+  <div class="topbar"><span id="credits"></span><span id="clock"></span><span id="weatherIco"></span></div>
   <div id="toasts"></div>
   <div id="bigmsg" class="bigmsg" hidden></div>
   <div id="raceLights" hidden></div>
@@ -383,6 +442,13 @@
 </div>
 
 <div id="touch" hidden></div>
+<div id="cine" class="cine" hidden>
+  <div class="cine-bar top"></div><div class="cine-bar bot"></div>
+  <div id="cineBig"></div>
+  <div id="cineSub"></div>
+  <button id="cineSkip" type="button"></button>
+  <div id="cineFade"></div>
+</div>
 <div id="flash"></div>
 <div id="rewindFx" hidden><span data-i18n="rewind.label"></span></div>
 <div id="mapview" hidden>
@@ -423,5 +489,7 @@
 <script src="js/input.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/modes.js"></script>
+<script src="js/people.js"></script>
+<script src="js/police.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>

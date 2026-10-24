@@ -591,6 +591,7 @@
     difficulty: 'normal',
     damage: 'full', // off | visual | full
     police: true,
+    policeVoice: true,
     fines: true,
     fuel: true,
     aiLevel: 3,
@@ -663,7 +664,7 @@
     console: ['Backquote'],
   };
 
-  D.ACHIEVEMENTS = ['vitesKirici', 'firstStart', 'firstStall', 'perfect10', 'license', 'firstWin', 'champion', 'nazar', 'drift', 'speed', 'escape', 'parking', 'hillStart', 'clutchless'];
+  D.ACHIEVEMENTS = ['vitesKirici', 'firstStart', 'firstStall', 'perfect10', 'license', 'firstWin', 'champion', 'nazar', 'drift', 'speed', 'escape', 'takedown', 'mostWanted', 'parking', 'hillStart', 'clutchless'];
 
   if (typeof module !== 'undefined' && module.exports) module.exports = SB;
 })(typeof window !== 'undefined' ? window : globalThis);

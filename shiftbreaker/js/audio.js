@@ -333,6 +333,12 @@
     shiftClick(k) { this.burst(1400, 2, 0.18 * (k || 1), 0.05); this.tone(320, 0.06, 0.05, 'square'); }
     clutchThunk() { this.tone(90, 0.12, 0.08, 'sine'); }
     click() { this.tone(2200, 0.04, 0.025, 'square'); }
+    // police radio: a squelch burst with the key-up chirp
+    radioSquelch() { this.burst(1900, 1.2, 0.14, 0.12); this.tone(1250, 0.05, 0.07, 'square'); setTimeout(() => this.burst(2400, 2, 0.08, 0.05), 160); }
+    // handcuffs ratcheting shut
+    cuffs() { for (let i = 0; i < 7; i++) setTimeout(() => this.tone(2900 + Math.random() * 900, 0.06, 0.018, 'square'), i * 26); setTimeout(() => { this.burst(3800, 3, 0.4, 0.05, 'highpass'); this.tone(1700, 0.09, 0.08, 'triangle'); }, 200); }
+    // a tyre bursting on a spike strip
+    tirePop() { this.burst(260, 0.7, 1, 0.16, 'lowpass'); this.tone(70, 0.5, 0.25, 'sine', null, 35); this.burst(3200, 0.8, 0.3, 0.9, 'highpass'); }
     tick() { this.tone(1300, 0.05, 0.02, 'square'); }
     beep(f, d, v) { this.tone(f || 1500, v || 0.12, d || 0.09, 'sine'); }
     chime() { [660, 880, 1320].forEach((f, i) => setTimeout(() => this.tone(f, 0.12, 0.5, 'sine', this.sfxBus), i * 90)); }

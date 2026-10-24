@@ -319,88 +319,6 @@
     }
   }
 
-  // ------------------------------------------------------------------ police / wanted level
-  class Police {
-    constructor(game) {
-      this.game = game;
-      this.stars = 0;
-      this.escapeT = 0;
-      this.pullT = 0;
-      this.evadeT = 0;
-      this.roadblock = false;
-      this.hitRun = null;
-    }
-    reset() {
-      this.stars = 0;
-      this.escapeT = this.pullT = this.evadeT = 0;
-      this.roadblock = false;
-      this.game.traffic.clearPolice();
-    }
-    fine(amount, reason, points) {
-      const g = this.game;
-      if (!g.settings.fines) return;
-      g.addCredits(-amount);
-      g.save.licensePoints = Math.max(0, (g.save.licensePoints == null ? 100 : g.save.licensePoints) - (points || 0));
-      g.hud.toast(t('fine.' + reason, { n: U.fmtInt(amount) }), 'bad', 3);
-      g.audio.fail();
-    }
-    crime(kind) {
-      const g = this.game;
-      const E = SB.DATA.ECONOMY;
-      if (kind === 'radar') { this.fine(E.fines.speeding, 'speeding', E.points.speeding); return; }
-      if (kind === 'wrongWay') { this.fine(E.fines.wrongWay, 'wrongWay', E.points.wrongWay); return; }
-      if (kind === 'redLight') {
-        const near = g.traffic.police.some((c) => Math.hypot(c.x - g.player.pos.x, c.z - g.player.pos.z) < 140);
-        if (!g.settings.police || (!near && Math.random() < 0.7)) { this.fine(E.fines.redLight, 'redLight', E.points.redLight); return; }
-      }
-      if (!g.settings.police) return;
-      const before = this.stars;
-      if (kind === 'redLight' || kind === 'hitAndRun') this.stars = Math.max(this.stars, 1) + (this.stars ? 1 : 0);
-      if (kind === 'hitPolice') this.stars += 1;
-      if (kind === 'evade') this.stars = Math.max(this.stars, 2);
-      this.stars = U.clamp(this.stars, 0, 3);
-      if (this.stars > before) { g.hud.big(t('police.wanted'), '★'.repeat(this.stars), 2, 'bad'); this.escapeT = 0; }
-    }
-    update(dt) {
-      const g = this.game, tr = g.traffic, pl = g.player;
-      if (!g.settings.police || g.mode.noPolice) { if (this.stars) this.reset(); g.audio.setWorld && (g.sirenLevel = 0); return; }
-      const want = this.stars;
-      const chasers = tr.police.filter((c) => !c.roadblock);
-      if (chasers.length < want && Math.random() < dt * 2) tr.spawnPolice(pl, false);
-      if (want >= 3 && !this.roadblock && Math.abs(pl.speed) > 10) { const a = tr.spawnPolice(pl, true); const b = a && tr.spawnPolice(pl, true); if (b) { b.x += b.tx * 5; b.z += b.tz * 5; } this.roadblock = true; }
-      if (!want && tr.police.length) tr.clearPolice();
-      let near = Infinity;
-      for (const c of tr.police) near = Math.min(near, Math.hypot(c.x - pl.pos.x, c.z - pl.pos.z));
-      g.sirenLevel = want ? U.clamp(1 - near / 220, 0, 1) * 0.08 : 0;
-      if (!want) return;
-      // escape: stay far from every police car
-      if (near > 170) {
-        this.escapeT += dt;
-        if (this.escapeT > 14) {
-          this.stars--;
-          this.escapeT = 0;
-          if (this.stars === 0) { g.hud.big(t('police.escaped'), '', 2, 'good'); g.achieve('escape'); this.reset(); }
-          else g.hud.toast(t('police.starDown'), 'good', 2);
-        }
-      } else this.escapeT = Math.max(0, this.escapeT - dt * 0.5);
-      // pull over or busted
-      if (near < 16 && Math.abs(pl.speed) < 0.8) {
-        this.pullT += dt;
-        if (this.pullT > 3) {
-          const E = SB.DATA.ECONOMY;
-          if (this.stars === 1) { this.fine(E.fines.pullOver, 'pullOver', 5); g.hud.big(t('police.pulledOver'), '', 2.5); this.reset(); }
-          else {
-            this.fine(E.fines.busted + E.fines.impound, 'busted', 20);
-            g.hud.big(t('police.busted'), t('police.impounded'), 3.5, 'bad');
-            this.reset();
-            g.teleportToPOI('garage');
-          }
-        }
-      } else this.pullT = Math.max(0, this.pullT - dt);
-      if (this.stars === 1 && near < 30 && Math.abs(pl.speed) > 5) { this.evadeT += dt; if (this.evadeT > 9) { this.evadeT = 0; this.crime('evade'); } } else this.evadeT = 0;
-    }
-  }
-
   // ------------------------------------------------------------------ skill chains
   class Skills {
     constructor(game) { this.game = game; this.chain = []; this.points = 0; this.mult = 1; this.t = 0; this.driftAcc = 0; }
@@ -627,8 +545,9 @@
       }
     }
     onImpact(e) {
-      if (e.other && e.other.type && !e.other.isPolice && e.speed > 5) this.hitRun = { x: this.game.player.pos.x, z: this.game.player.pos.z, t: 0 };
-      if (e.other && e.other.isPolice && e.speed > 4) this.game.police.crime('hitPolice');
+      // hitting a traffic or parked car and driving off is a hit-and-run (rammed cruisers are handled by the police)
+      const o = e.other && (e.other.src || (e.other.parked ? e.other : null));
+      if (o && !o.isPolice && e.speed > 5) this.hitRun = { x: this.game.player.pos.x, z: this.game.player.pos.z, t: 0 };
     }
     minimapDots(dot) {
       for (const n of this.nazarMeshes) if (n.grp.visible) dot(n.c.x, n.c.z, '#2e6bff', 3.5);
@@ -1279,5 +1198,5 @@
     minimapDots(dot) { if (this.target) dot(this.target.x, this.target.z, '#5ce1ff', 5); }
   }
 
-  SB.Modes = { FreeRoam, Race, Drag, Parking, License, Police, Skills, Rival, PARK };
+  SB.Modes = { FreeRoam, Race, Drag, Parking, License, Skills, Rival, PARK };
 })();

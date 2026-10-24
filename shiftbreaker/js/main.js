@@ -392,6 +392,8 @@
       const p = this.player;
       if (a === 'horn') { p.horn = down; return; }
       if (!down) return;
+      // police scene: any control skips ahead
+      if (this.state === 'arrest') { if (a !== 'debug' && a !== 'console') this.police.skipScene(); return; }
       switch (a) {
         case 'pause': if (this.state === 'play') this.pause(); else this.resume(); break;
         case 'camera': this.camMode = (this.camMode + 1) % this.camModes.length; this.hud.toast(t('cam.' + this.camModes[this.camMode]), 'info', 1); break;
@@ -649,6 +651,14 @@
           this.reverseAids();
           this.coach(gdt);
         }
+      } else if (this.state === 'arrest') {
+        // ticket / arrest scene: the world keeps living, the car stays put
+        this.time += rdt;
+        this.frameDt = rdt;
+        this.traffic.update(rdt, p);
+        if (this.police.scene) this.police.scene.update(rdt);
+        if (this.police.heli) this.police.heli.update(rdt);
+        this.fx.update(rdt);
       } else if (this.state === 'replay') this.updateReplay(rdt);
       else if (this.state === 'menu') {
         this.time += rdt;
@@ -665,7 +675,7 @@
       this.env.update(this.state === 'pause' ? 0 : rdt * this.timeScale, this.camera.position, this.state === 'menu' ? this.camera.position : p.pos);
       this.updateAudio(rdt);
       this.render();
-      if (this.state === 'play' || this.state === 'result' || this.state === 'map' || this.state === 'pause') this.hud.update(rdt);
+      if (this.state === 'play' || this.state === 'result' || this.state === 'map' || this.state === 'pause' || this.state === 'arrest') this.hud.update(rdt);
       this.input.updateTouchWidget();
     }
     // pulling-away coach: when the throttle can't move the car, say why
@@ -860,7 +870,7 @@
       const A = this.audio;
       if (!A.ready) return;
       const p = this.player, dt = p.dt;
-      const live = this.state === 'play' || this.state === 'result' || this.state === 'replay';
+      const live = this.state === 'play' || this.state === 'result' || this.state === 'replay' || this.state === 'arrest';
       if (!live) { A.setEngine({ rpm: 0, load: 0, running: false, cranking: false, cyl: 4 }); A.setGrind(0); A.setTires(0); A.setWorld({ speed: 0, rain: this.env.rainLevel || 0, city: 0.4 }); return; }
       A.setEngine({ rpm: dt.rpm(), load: dt.running ? dt.thrEff : 0, running: dt.running, cranking: dt.cranking, cyl: p.car.engine.cylinders, fuelCut: dt.fuelCut, lug: dt.lugging, misfire: dt.misfireT > 0, boost: p.car.engine.turbo ? dt.boost : 0, whine: p.car.straightCut ? Math.abs(p.speed) : 0, redline: dt.redline() });
       A.setGrind(dt.state === 'GRIND' ? (dt.grindKind === 'fast' ? 1 : 0.75) : 0);
@@ -910,6 +920,7 @@
         cam.lookAt(ph.target.x, ph.target.y + 0.4, ph.target.z);
         return;
       }
+      if (this.state === 'arrest' && this.police.scene) { this.police.scene.camera(cam, rdt); return; }
       if (this.cinematic || this.state === 'replay') {
         this.cineA = (this.cineA || 0) + rdt * 0.35;
         const d = 10, hgt = 3.2;

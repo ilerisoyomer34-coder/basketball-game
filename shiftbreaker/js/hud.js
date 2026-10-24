@@ -348,7 +348,12 @@
       };
       for (const p of W.pois) dot(p.x, p.z, POI_COLORS[p.type] || '#ddd', 6.5, POI_GLYPH[p.type]);
       if (mode && mode.minimapDots) mode.minimapDots(dot);
-      for (const c of this.game.traffic.police) dot(c.x, c.z, Math.floor(this.game.time * 6) % 2 ? '#ff3b30' : '#2f7dff', 4.5);
+      for (const c of this.game.traffic.police) dot(c.x, c.z, c.disabled ? '#666' : Math.floor(this.game.time * 6) % 2 ? '#ff3b30' : '#2f7dff', 4.5);
+      const Pol = this.game.police;
+      if (Pol) {
+        for (const sp of Pol.spikes) dot(sp.x, sp.z, '#ffd400', 3.5);
+        if (Pol.heli) dot(Pol.heli.pos.x, Pol.heli.pos.z, '#ffffff', 6, 'H');
+      }
       if (this.waypoint) dot(this.waypoint.x, this.waypoint.z, '#7fd3ff', 6, '★');
       g.restore();
       // player arrow
@@ -497,15 +502,34 @@
       this.setText('credits', U.fmtInt(game.save.credits) + ' ' + SB.i18n.t('ui.cr'));
       this.setText('clock', game.env.clockText());
       this.setText('weatherIco', WEATHER_ICON[game.env.nextWeather] || '');
-      const stars = game.police ? game.police.stars : 0;
-      this.setHTML('wanted', stars ? '<b>' + '★'.repeat(stars) + '</b>' + '☆'.repeat(3 - stars) : '');
-      this.show('wanted', stars > 0);
+      this.drawChase(game.police);
       // reverse camera frame
       this.show('revcam', game.showRevCam);
       this.show('mirror', game.showMirror);
       // debug overlay
       if (game.debug) this.drawDebug(car);
       this.show('debug', !!game.debug);
+    }
+    // pursuit panel: stars, chase time, bounty, escape / bust meters; red-blue glow when a cruiser is close
+    drawChase(P) {
+      const stars = P ? P.stars : 0;
+      this.show('chase', stars > 0);
+      const glow = stars ? U.clamp(1 - P.near / 70, 0, 1) * 0.6 : 0;
+      const gk = glow.toFixed(2);
+      if (this.cache.glow !== gk) { this.cache.glow = gk; $('sirenGlow').style.opacity = gk; }
+      if (!stars) return;
+      const t = SB.i18n.t;
+      this.setHTML('chStars', '<b>' + '★'.repeat(stars) + '</b>' + '☆'.repeat(5 - stars));
+      const s = Math.floor(P.chaseT);
+      this.setText('chTime', Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
+      this.setText('chBounty', stars >= 2 ? t('chase.bounty', { n: U.fmtInt(Math.round(P.bounty / 10) * 10) }) : t('chase.pull'));
+      const ev = Math.round(U.clamp(P.escapeT / P.escapeNeed(), 0, 1) * 100), bu = Math.round(U.clamp(P.bustT / P.bustNeed(), 0, 1) * 100);
+      if (this.cache.chEv !== ev) { this.cache.chEv = ev; $('chEv').style.width = ev + '%'; }
+      if (this.cache.chBu !== bu) { this.cache.chBu = bu; $('chBu').style.width = bu + '%'; }
+      const el = $('chase');
+      el.classList.toggle('busting', bu > 3);
+      el.classList.toggle('heli', !!P.heliSpot);
+      this.setText('chState', P.heliSpot ? t('chase.heli') : P.escapeT > 0.5 ? t('chase.losing') : stars >= 2 ? t('chase.seen') : t('chase.follow'));
     }
     drawDebug(car) {
       const dt = car.dt;

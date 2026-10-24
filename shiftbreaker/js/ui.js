@@ -236,6 +236,7 @@
         choice('difficulty', t('set.difficulty'), [['arcade', 'diff.arcade'], ['normal', 'diff.normal'], ['hardcore', 'diff.hardcore']], t('set.difficulty.h.' + s.difficulty));
         choice('damage', t('set.damage'), [['off', 'set.damage.off'], ['visual', 'set.damage.visual'], ['full', 'set.damage.full']]);
         toggle('police', t('set.police'));
+        toggle('policeVoice', t('set.voice'));
         toggle('fines', t('set.fines'));
         toggle('fuel', t('set.fuel'));
         slider('aiLevel', t('set.ai'), 0, 7, 1, (v) => t('ai.' + v));
@@ -871,6 +872,29 @@
       this.open(wrap, 'boom-screen');
     }
 
+    // ------------------------------------------------------------ police: arrest report
+    bustedReport(r, done) {
+      const g = this.game;
+      const { p, body, foot } = this.panel(t('bust.title'), t('bust.sub'));
+      p.classList.add('bust');
+      const s = Math.floor(r.chase);
+      const total = r.fine + r.impound;
+      const photo = r.photo ? `<img alt="" src="${r.photo}">` : '';
+      const rows = [
+        [t('bust.chase'), Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')],
+        [t('bust.stars'), '★'.repeat(r.stars) + '☆'.repeat(5 - r.stars)],
+        [t('bust.takedowns'), String(r.takedowns)],
+        [t('bust.bounty'), '−' + U.fmtInt(r.bounty) + ' ' + t('ui.cr')],
+        [t('bust.fine'), '−' + U.fmtInt(r.fine) + ' ' + t('ui.cr')],
+        [t('bust.impound'), '−' + U.fmtInt(r.impound) + ' ' + t('ui.cr')],
+        [t('bust.points'), '−' + r.points],
+      ];
+      body.appendChild(this.el('div', 'bust-grid', `<div class="bust-photo">${photo}<span class="cap">${esc(t('bust.photo'))} · ${esc(g.env.clockText())}</span><span class="stamp">${esc(t('bust.stamp'))}</span></div>
+        <div class="bust-rows">${rows.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}<div class="tot"><span>${esc(t('bust.total'))}</span><b>−${U.fmtInt(g.settings.fines ? total : 0)} ${esc(t('ui.cr'))}</b></div></div>`));
+      foot.appendChild(this.btn(esc(t('bust.leave')), done, 'primary'));
+      this.open(p, 'center');
+    }
+
     // ------------------------------------------------------------ misc
     tips(back) {
       const g = this.game;
@@ -931,7 +955,7 @@
           else if (cmd === 'money') g.addCredits(+a[0]);
           else if (cmd === 'repair') { g.spawnPlayer(g.save.current); }
           else if (cmd === 'fuel') g.player.dt.fuel = g.player.car.fuelTank;
-          else if (cmd === 'police') { g.police.stars = U.clamp(+a[0], 0, 3); if (!g.police.stars) g.police.reset(); }
+          else if (cmd === 'police') { const n = U.clamp(+a[0] || 0, 0, 5); if (!n) g.police.reset(); else { if (!g.police.stars) g.police.clearChase(); const b = g.police.stars; g.police.stars = n; g.police.onStars(b); } }
           else if (cmd === 'explode') { const d = g.player.dt; d.lastEngaged = 6; d.left6At = d.time; d.selStartKmh = 99; d.checkExplosion(1); }
           else if (cmd === 'debug') g.debug = !g.debug;
           else if (cmd === 'help') msg = t('console.help');

@@ -12,7 +12,7 @@
     dolmus: { cap: 8, mass: 2300, colors: [0xf2c230], w: 2 },
     bus: { cap: 5, mass: 12000, colors: [0x2a6fb0, 0xd9472b, 0x3c8b4a], w: 1.2 },
     truck: { cap: 6, mass: 7000, colors: [0xe8e6e0, 0x3a6ea5, 0xb83a2a], w: 1.2 },
-    police: { cap: 6, mass: 1600, colors: [0xf4f4f4], w: 0 },
+    police: { cap: 10, mass: 1600, colors: [0xf4f4f4], w: 0 },
     van: { cap: 1, mass: 2000, colors: null, w: 0 },
     // articulated trolleybus (GLB model, two sections): avenues and streets only
     trolley: { cap: 2, mass: 16000, colors: null, w: 0.9, glb: true },
@@ -480,7 +480,20 @@
     // player hit a traffic car (impulse already applied to the player)
     hit(c, res) {
       if (c.parent) c = c.parent; // trolleybus rear section
-      if (c.isPolice) { c.vx += res.dvx || 0; c.vz += res.dvz || 0; return; }
+      if (c.isPolice) {
+        const dv = Math.hypot(res.dvx || 0, res.dvz || 0);
+        if (res.push) { c.x += res.push.x; c.z += res.push.z; }
+        c.kx = (c.kx || 0) + (res.dvx || 0);
+        c.kz = (c.kz || 0) + (res.dvz || 0);
+        c.speed = Math.max(0, c.speed - dv * 0.5);
+        c.yaw += (Math.random() - 0.5) * Math.min(1, dv * 0.12);
+        c.tx = Math.sin(c.yaw); c.tz = Math.cos(c.yaw);
+        // who drove into whom: closing speeds along the line between the two
+        const pl = this.game.player, nx = c.x - pl.pos.x, nz = c.z - pl.pos.z, nl = Math.hypot(nx, nz) || 1;
+        const mine = (pl.vel.x * nx + pl.vel.z * nz) / nl >= -((c.vx || 0) * nx + (c.vz || 0) * nz) / nl;
+        if (this.game.police) this.game.police.onRam(c, dv, mine);
+        return;
+      }
       if (c.state !== 'crashed') { c.vx = c.tx * c.speed; c.vz = c.tz * c.speed; }
       c.vx += res.dvx || 0;
       c.vz += res.dvz || 0;
@@ -489,7 +502,7 @@
       c.state = 'crashed';
       c.crashT = 0;
     }
-    rectOf(c) { return { x: c.x, z: c.z, hl: c.len / 2, hw: c.wid / 2, ang: c.yaw, y: this.world.heightAt(c.x, c.z) + 0.8, vx: c.vx || 0, vz: c.vz || 0, mass: c.mass }; }
+    rectOf(c) { return { x: c.x, z: c.z, hl: c.len / 2, hw: c.wid / 2, ang: c.yaw, y: this.world.heightAt(c.x, c.z) + 0.8, vx: c.vx || 0, vz: c.vz || 0, mass: c.mass, src: c }; }
     // all moving boxes near p (for the player's physics step)
     nearby(p, r) {
       const out = [];
@@ -616,46 +629,87 @@
     }
 
     // ---------------------------------------------------------------- police
-    spawnPolice(player, roadblock) {
+    // a cruiser somewhere around the player (or ahead of them: an interceptor coming the other way)
+    spawnPolice(player, roadblock, ahead) {
       const W = this.world;
       if (!this.free.police.length) return null;
       let best = null;
       for (let k = 0; k < 12 && !best; k++) {
         const ang = Math.random() * 6.28, dist = roadblock ? 90 : 110 + Math.random() * 80;
         let x = player.pos.x + Math.cos(ang) * dist, z = player.pos.z + Math.sin(ang) * dist;
-        if (roadblock) { x = player.pos.x + player.vel.x * 5; z = player.pos.z + player.vel.z * 5; }
+        if (roadblock || ahead) { x = player.pos.x + player.vel.x * 5 + (ahead ? (Math.random() - 0.5) * 40 : 0); z = player.pos.z + player.vel.z * 5 + (ahead ? (Math.random() - 0.5) * 40 : 0); }
+        if (ahead && Math.hypot(x - player.pos.x, z - player.pos.z) < 90) continue;
         if (!W.inPlay(x, z)) continue;
         const r = W.nearestRoad(x, z, true);
         if (r && r.dist < 20) best = r;
       }
       if (!best) return null;
+      let yaw = Math.atan2(best.tx, best.tz);
+      if (roadblock) yaw += Math.PI / 2;
+      else if (ahead && Math.sin(yaw) * (player.pos.x - best.x) + Math.cos(yaw) * (player.pos.z - best.z) < 0) yaw += Math.PI;
+      return this.addPolice(best.x, best.z, yaw, roadblock);
+    }
+    addPolice(x, z, yaw, roadblock) {
+      if (!this.free.police.length) return null;
       const md = this.models.police;
-      const c = { isPolice: true, type: 'police', idx: this.free.police.pop(), x: best.x, z: best.z, tx: best.tx, tz: best.tz, yaw: Math.atan2(best.tx, best.tz), speed: 0, len: md.len, wid: md.wid, mass: TYPES.police.mass, path: null, pathT: 0, vx: 0, vz: 0, roadblock: !!roadblock, flash: Math.random() * 6 };
-      if (roadblock) { c.yaw += Math.PI / 2; c.tx = Math.sin(c.yaw); c.tz = Math.cos(c.yaw); }
+      const c = { isPolice: true, type: 'police', idx: this.free.police.pop(), x, z, yaw, tx: Math.sin(yaw), tz: Math.cos(yaw), speed: 0, len: md.len, wid: md.wid, mass: TYPES.police.mass, path: null, pathT: 0, vx: 0, vz: 0, roadblock: !!roadblock, flash: Math.random() * 6, dmg: 0 };
       this.police.push(c);
       return c;
     }
-    clearPolice() {
-      for (const c of this.police) { _m.makeScale(0, 0, 0); this.inst.police.setMatrixAt(c.idx, _m); this.free.police.push(c.idx); }
-      this.police = [];
+    removePolice(c) {
+      const i = this.police.indexOf(c);
+      if (i < 0) return;
+      this.police.splice(i, 1);
+      this.free.police.push(c.idx);
+    }
+    // keep: leave the cruiser parked after a ticket
+    clearPolice(keep) {
+      const stay = keep ? this.police.filter((c) => c.leftover) : [];
+      for (const c of this.police) if (!stay.includes(c)) this.free.police.push(c.idx);
+      this.police = stay;
     }
     updatePolice(dt, player) {
       const W = this.world;
       const pp = player.pos;
+      const S = this.game.police ? this.game.police.stars : 0;
       for (const c of this.police) {
         c.flash += dt;
-        if (c.roadblock) { c.speed = 0; c.vx = c.vz = 0; continue; }
+        // knocked by the player: the shove fades out
+        if (c.kx || c.kz) {
+          c.x += c.kx * dt; c.z += c.kz * dt;
+          const f = Math.exp(-dt * 3);
+          c.kx *= f; c.kz *= f;
+          if (Math.abs(c.kx) + Math.abs(c.kz) < 0.05) c.kx = c.kz = 0;
+        }
+        if (c.roadblock || c.hold || c.leftover) { c.speed = 0; c.vx = c.kx || 0; c.vz = c.kz || 0; continue; }
+        if (c.disabled) {
+          // wrecked: rolls to a stop, lights dead
+          c.speed = Math.max(0, c.speed - 7 * dt);
+          c.vx = c.tx * c.speed + (c.kx || 0); c.vz = c.tz * c.speed + (c.kz || 0);
+          c.x += c.tx * c.speed * dt; c.z += c.tz * c.speed * dt;
+          continue;
+        }
         const dx = pp.x - c.x, dz = pp.z - c.z;
         const d = Math.hypot(dx, dz);
         let tx, tz;
         if (d < 50) {
-          const px = pp.x + player.vel.x * 0.6, pz = pp.z + player.vel.z * 0.6;
+          const ps = player.vel.length();
+          let px = pp.x + player.vel.x * (S >= 3 ? 0.9 : 0.6), pz = pp.z + player.vel.z * (S >= 3 ? 0.9 : 0.6);
+          // from three stars they go for the rear quarter (PIT) instead of shadowing you
+          const pit = S >= 3 && d < 16 && ps > 6;
+          if (pit) {
+            const side = Math.sign((c.x - pp.x) * player.left.x + (c.z - pp.z) * player.left.z) || 1;
+            px += player.left.x * side * 0.8 - player.fwd.x * 1.4;
+            pz += player.left.z * side * 0.8 - player.fwd.z * 1.4;
+          }
           tx = px - c.x; tz = pz - c.z;
           const l = Math.hypot(tx, tz) || 1;
           tx /= l; tz /= l;
-          const ps = player.vel.length();
-          const vT = d < 9 ? Math.max(0, ps - 1) : Math.min(42, ps + 4 + d * 0.25);
-          c.speed += U.clamp(vT - c.speed, -9 * dt, 6 * dt);
+          let vT;
+          if (ps < 3) vT = d < 7 ? 0 : Math.min(14, d * 0.8);
+          else if (d < 9) vT = pit ? ps + 3.5 : Math.max(0, ps - 1);
+          else vT = Math.min(42 + S * 2, ps + 4 + d * 0.25);
+          c.speed += U.clamp(vT - c.speed, -9 * dt, (6 + S * 0.6) * dt);
         } else {
           c.pathT -= dt;
           if (!c.path || c.pathT <= 0) {
@@ -672,7 +726,7 @@
           const l = Math.hypot(tx, tz) || 1;
           tx /= l; tz /= l;
           const corner = c.path && c.pi < c.path.length - 1 ? Math.hypot(tgt.x - c.x, tgt.z - c.z) : 99;
-          const vT = corner < 25 ? 12 + corner * 0.6 : 34;
+          const vT = corner < 25 ? 12 + corner * 0.6 : 34 + S * 3;
           c.speed += U.clamp(vT - c.speed, -9 * dt, 6 * dt);
         }
         // turn toward target with a limited yaw rate
@@ -736,7 +790,7 @@
           const sides = c.ind === 2 ? [-1, 1] : [c.ind === -1 ? 1 : -1];
           for (const sg of sides) { light(c.x + fx * hl + lx * (hw + 0.2) * sg, y + 0.7, c.z + fz * hl + lz * (hw + 0.2) * sg, 1, 0.6, 0.1, 1, 0.5); light(c.x - fx * hl + lx * (hw + 0.2) * sg, y + 0.8, c.z - fz * hl + lz * (hw + 0.2) * sg, 1, 0.6, 0.1, 1, 0.5); }
         }
-        if (c.isPolice) {
+        if (c.isPolice && !c.disabled) {
           const ph = Math.floor(c.flash * 7) % 2;
           light(c.x + lx * 0.35, y + 1.6, c.z + lz * 0.35, ph ? 0.1 : 1, 0.15, ph ? 1 : 0.1, 1, 1.4);
           light(c.x - lx * 0.35, y + 1.6, c.z - lz * 0.35, ph ? 1 : 0.1, 0.15, ph ? 0.1 : 1, 1, 1.4);
