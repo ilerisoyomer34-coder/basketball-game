@@ -53,6 +53,7 @@
     kneelDown: { y: -0.45, hipL: [0.05, 0, 0], hipR: [0.05, 0, 0], knL: [1.6, 0, 0], knR: [1.6, 0, 0], shL: [0, 0, 1.42], elL: [0, 0, 1.75], shR: [0, 0, -1.42], elR: [0, 0, -1.75] },
     // lying face down (with lie()), arms stretched past the head
     proneArms: { neck: [-0.5, 0, 0], shL: [-2.85, 0, 0.3], elL: [-0.1, 0, 0], shR: [-2.85, 0, -0.3], elR: [-0.1, 0, 0] },
+    sitCuffed: { y: -0.42, chest: [0.12, 0.1, 0], neck: [0.1, 0.15, 0], hipL: [-1.35, 0, 0], hipR: [-1.35, 0, 0], knL: [1.45, 0, 0], knR: [1.45, 0, 0], shL: [-0.45, 0, 0.1], elL: [-0.7, 0, 0], shR: [0.35, 0, -0.75], elR: [-0.35, 0, 0] },
     sit: { y: -0.42, chest: [0.32, 0, 0], neck: [-0.15, 0, 0], hipL: [-1.35, 0, 0], hipR: [-1.35, 0, 0], knL: [1.45, 0, 0], knR: [1.45, 0, 0], shL: [-0.5, 0, 0.1], shR: [-0.5, 0, -0.1], elL: [-0.6, 0, 0], elR: [-0.6, 0, 0] },
   };
   const JOINTS = ['chest', 'neck', 'shL', 'shR', 'elL', 'elR', 'hipL', 'hipR', 'knL', 'knR'];
@@ -201,9 +202,20 @@
       const c = this.cuffs;
       if (!c) return;
       c.L.visible = c.R.visible = c.on = false;
-      c.chain.visible = false;
+      c.chain.visible = c.fixed.visible = false;
+      c.anchor = null;
     }
-    show(on) { this.vis = on; this.root.visible = on; if (this.cuffs) this.cuffs.chain.visible = on && this.cuffs.on; }
+    // right wrist cuffed to a fixed point (a ring round a pole at p)
+    cuffTo(p) {
+      this.putCuffs('R');
+      const c = this.cuffs;
+      c.L.visible = false;
+      c.anchor = p.clone();
+      c.fixed.position.copy(p);
+      c.fixed.visible = true;
+      c.on = true;
+    }
+    show(on) { this.vis = on; this.root.visible = on; if (this.cuffs) { this.cuffs.chain.visible = on && this.cuffs.on; this.cuffs.fixed.visible = on && !!this.cuffs.anchor; } }
     putCuffs(side) {
       if (!this.cuffs) {
         const steel = mat(0xc9ced4, { metalness: 0.95, roughness: 0.22 });
@@ -212,12 +224,15 @@
         const chain = new T.Mesh(geo('cuffChain', () => new T.CylinderGeometry(0.006, 0.006, 1, 5).translate(0, 0.5, 0).rotateX(Math.PI / 2)), steel);
         chain.visible = false;
         this.game.scene.add(chain);
-        this.cuffs = { L: mk(this.j.wristL), R: mk(this.j.wristR), chain, on: false };
+        const fixed = new T.Mesh(geo('cuffFixed', () => new T.TorusGeometry(0.05, 0.009, 6, 16).rotateX(Math.PI / 2)), steel);
+        fixed.visible = false;
+        this.game.scene.add(fixed);
+        this.cuffs = { L: mk(this.j.wristL), R: mk(this.j.wristR), chain, fixed, anchor: null, on: false };
       }
       const c = this.cuffs;
       if (side === 'L' || side === 'both') c.L.visible = true;
       if (side === 'R' || side === 'both') c.R.visible = true;
-      c.on = c.L.visible && c.R.visible;
+      c.on = (c.L.visible && c.R.visible) || !!c.anchor;
     }
     pos(out) { return (out || new T.Vector3()).set(this.x, this.root.position.y, this.z); }
     wristPos(side, out) { this.root.updateMatrixWorld(true); return this.j['wrist' + side].getWorldPosition(out || new T.Vector3()); }
@@ -286,7 +301,7 @@
       // cuff chain between the wrists
       const c = this.cuffs;
       if (c && c.on) {
-        const a = this.wristPos('L', _a), b = this.wristPos('R', _b);
+        const a = c.anchor ? _a.copy(c.anchor) : this.wristPos('L', _a), b = this.wristPos('R', _b);
         c.chain.position.copy(a);
         c.chain.lookAt(b);
         c.chain.scale.set(1, 1, Math.max(0.02, a.distanceTo(b)));
@@ -302,7 +317,7 @@
     }
     dispose() {
       this.game.scene.remove(this.root);
-      if (this.cuffs) this.game.scene.remove(this.cuffs.chain);
+      if (this.cuffs) this.game.scene.remove(this.cuffs.chain, this.cuffs.fixed);
     }
   }
   const _a = new T.Vector3(), _b = new T.Vector3();

@@ -673,6 +673,8 @@
       this.updateCamera(rdt);
       this.world.cullChunks(this.camera.position);
       this.env.update(this.state === 'pause' ? 0 : rdt * this.timeScale, this.camera.position, this.state === 'menu' ? this.camera.position : p.pos);
+      // no rain inside the police station
+      if (this.state === 'arrest' && this.police.scene && this.police.scene.indoor) this.env.rain.visible = this.env.snow.visible = false;
       this.updateAudio(rdt);
       this.render();
       if (this.state === 'play' || this.state === 'result' || this.state === 'map' || this.state === 'pause' || this.state === 'arrest') this.hud.update(rdt);

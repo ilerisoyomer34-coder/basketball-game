@@ -528,7 +528,7 @@
       }
       // arrest: the report over the scene, then the pound
       const fine = E.fines.busted + 600 * Math.max(0, this.peak - 2);
-      const rep = { photo: info.photo, chase: this.chaseT, stars: this.peak, takedowns: this.takedowns, bounty: Math.round(this.bounty / 10) * 10, fine, impound: E.fines.impound, points: 20 };
+      const rep = { photo: info.photo, mugs: info.mugs, chase: this.chaseT, stars: this.peak, takedowns: this.takedowns, bounty: Math.round(this.bounty / 10) * 10, fine, impound: E.fines.impound, points: 20 };
       g.save.stats.busted = (g.save.stats.busted || 0) + 1;
       g.ui.bustedReport(rep, () => {
         this.scene = null;
@@ -540,6 +540,10 @@
         g.ui.close();
         g.state = 'play';
         g.hideHud = false;
+        // a night in the cell: out the next morning
+        g.save.day = (g.save.day || 1) + 1;
+        g.env.setTime(8.2);
+        g._lastClock = g.env.time;
         g.teleportToPOI('garage');
         g.prepareStart(false);
         g.camPos = null;
@@ -721,36 +725,46 @@
     skip() {
       if (this.ended || this.t < 0.6) return;
       if (this.kind === 'ticket') { this.finishTicket(); return; }
-      if (!this.photo) this.capture();
+      if (!this.photo) this.photo = this.capture();
       this.fadeOut();
     }
-    capture() {
+    // a still of the current view; mug: a 4:5 crop of the middle
+    capture(mug) {
       const g = this.game;
       try {
         g.render();
         const src = g.renderer.domElement;
         const c = document.createElement('canvas');
-        c.width = 480;
-        c.height = Math.round((480 * src.height) / Math.max(1, src.width));
-        c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
-        this.photo = c.toDataURL('image/jpeg', 0.82);
-      } catch (e) { this.photo = null; }
+        if (mug) {
+          const sh = src.height * 0.8, sw = sh * 0.8;
+          c.width = 240; c.height = 300;
+          c.getContext('2d').drawImage(src, (src.width - sw) / 2, src.height * 0.08, sw, sh, 0, 0, 240, 300);
+        } else {
+          c.width = 480;
+          c.height = Math.round((480 * src.height) / Math.max(1, src.width));
+          c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+        }
+        return c.toDataURL('image/jpeg', 0.82);
+      } catch (e) { return null; }
+    }
+    fade(to, ms) {
+      this.fadeEl.style.transition = 'opacity ' + (ms || 700) + 'ms ease';
+      this.fadeEl.style.opacity = to;
     }
     fadeOut() {
       if (this.fading) return;
       this.fading = true;
-      this.fadeEl.style.transition = 'opacity 0.7s ease';
-      this.fadeEl.style.opacity = 1;
+      this.fade(1);
       setTimeout(() => {
         if (this.ended) return;
         this.ended = true;
         this.reportShot = true;
         this.dom.classList.add('report');
-        this.fadeEl.style.opacity = 0.35;
+        this.fade(0.35);
         this.subEl.classList.remove('show');
         this.bigEl.classList.remove('show');
         document.getElementById('cineSkip').hidden = true;
-        this.police.endScene('arrest', { photo: this.photo });
+        this.police.endScene('arrest', { photo: this.photo, mugs: this.mug1 ? [this.mug1, this.mug2] : null });
       }, 750);
     }
     finishTicket() {
@@ -760,9 +774,10 @@
     }
     update(dt) {
       this.t += dt;
-      if (this.kind === 'ticket') this.ticketBeats(); else this.arrestBeats();
+      if (this.kind === 'ticket') this.ticketBeats(); else if (this.phase === 'station') this.stationBeats(); else this.arrestBeats();
+      if (this.room) this.room.update(dt);
       const pl = this.game.player;
-      for (const f of this.figs) { f.update(dt); if (f !== this.D) shove(f, pl); }
+      for (const f of this.figs) { f.update(dt); if (f !== this.D && !this.indoor) shove(f, pl); }
     }
     // ---------------------------------------------------------------- ticket (one star)
     ticketBeats() {
@@ -780,33 +795,42 @@
       this.at(a + 3.9, 'bye', () => { O.setPose('talk'); this.sub(t('cine.who.officer'), t('cine.t.bye'), 1.8); });
       this.at(a + 5.0, 'end', () => this.finishTicket());
     }
-    // ---------------------------------------------------------------- arrest
+    // ---------------------------------------------------------------- arrest: pulled out, put face down, cuffed
     arrestBeats() {
       const g = this.game, O1 = this.O1, O2 = this.O2, O3 = this.O3, D = this.D, SL = this.SL, F = this.F;
-      const aim1 = off(this.door, SL, 2.7, F, -1.9), wait2 = off(this.door, SL, 2.0, F, 1.5), aim3 = off(this.C, F, this.hl + 0.9, SL, this.hw + 2.5);
-      const target = () => (D.vis && this.t > 3 ? P2(D.x, D.z) : this.door);
-      this.at(0.15, 'freeze', () => { this.sub(t('cine.who.officer'), t('cine.a.freeze'), 1.8); g.audio.radioSquelch && g.audio.radioSquelch(); });
+      const who = t('cine.who.officer');
+      const aim1 = off(this.door, SL, 2.7, F, -1.9), aim3 = off(this.C, F, this.hl + 0.9, SL, this.hw + 2.5);
+      const grab = off(this.door, SL, 0.65, F, -0.6);
+      const ground = (this.ground = this.ground || off(this.door, SL, 0.55, F, -0.25));
+      const target = () => (this.t > 3 ? P2(D.x, D.z) : this.door);
+      this.at(0.15, 'freeze', () => { this.sub(who, t('cine.a.freeze'), 1.8); g.audio.radioSquelch && g.audio.radioSquelch(); });
       this.at(0.35, 'o1', () => { O1.setPose('aim'); O1.go(this.route(O1, aim1), 1.9); });
-      this.at(0.55, 'o2', () => { O2.setPose('aim'); O2.go(this.route(O2, wait2), 1.7); });
+      this.at(0.55, 'o2', () => { O2.setPose('aim'); O2.go(this.route(O2, grab), 1.8, () => { O2.face(this.door.x - SL.x, this.door.z - SL.z); O2.setPose('reach'); }); });
       if (O3) this.at(0.5, 'o3', () => { O3.setPose('aim'); O3.go(this.route(O3, aim3), 1.8); });
       for (const f of [O1, O3]) if (f && f.pose === 'aim' && !f.path) { const q = target(); f.face(q.x, q.z); }
-      if (O2.pose === 'aim' && !O2.path) { const q = target(); O2.face(q.x, q.z); }
-      this.at(1.9, 'out', () => this.sub(t('cine.who.officer'), t('cine.a.out'), 1.8));
-      this.at(3.0, 'exit', () => { D.setPose('stand'); D.go([this.door], 0.9); g.audio.thud(0.15); });
-      this.at(3.5, 'up', () => { D.setPose('handsUp'); this.sub(t('cine.who.officer'), t('cine.a.up'), 1.6); });
-      this.at(4.9, 'turn', () => {
-        D.face(this.C.x, this.C.z);
-        this.sub(t('cine.who.officer'), t('cine.a.turn'), 1.8);
-        O2.setPose('stand');
-        const cp = off(this.door, SL, 0.58, F, -0.32);
-        O2.go(this.route(O2, cp), 1.5, () => { O2.face(this.C.x, this.C.z); O2.setPose('cuff'); });
+      this.at(1.9, 'out', () => this.sub(who, t('cine.a.out'), 1.6));
+      // the officer pulls the driver out and steps back with them
+      this.at(3.0, 'pull', () => {
+        this.sub(who, t('cine.a.pull'), 1.3);
+        D.setPose('stand');
+        D.go([this.door, ground], 1.5);
+        O2.go([off(grab, SL, 0.55, F, -0.4)], 1.3, () => O2.face(ground.x, ground.z));
+        g.audio.thud(0.2);
       });
-      this.at(5.6, 'behind', () => D.setPose('handsBehind'));
-      this.at(6.15, 'cuffL', () => { D.putCuffs('L'); g.audio.cuffs && g.audio.cuffs(); });
-      this.at(6.5, 'cuffR', () => { D.putCuffs('R'); g.audio.cuffs && g.audio.cuffs(); this.big(t('cine.cuffed'), 'bad'); });
-      this.at(6.75, 'photo', () => this.capture());
-      this.at(7.0, 'rights', () => this.sub(t('cine.who.officer'), t('cine.a.rights'), 2.4));
-      this.at(7.7, 'walk', () => {
+      this.at(4.2, 'down', () => { D.face(ground.x + F.x * 5, ground.z + F.z * 5); D.setPose('kneelDown'); this.sub(who, t('cine.a.down'), 1.5); });
+      this.at(4.8, 'lie', () => { D.lie(true); D.setPose('proneArms'); g.audio.thud(0.35); });
+      this.at(5.0, 'kneel', () => {
+        const hips = off(ground, F, 0.95), kp = off(hips, SL, 0.62);
+        O2.setPose('stand');
+        O2.go(this.route(O2, kp), 1.4, () => { O2.face(hips.x, hips.z); O2.setPose('kneel'); });
+      });
+      this.at(5.8, 'behind', () => { D.setPose('handsBehind'); this.sub(who, t('cine.a.hands'), 1.4); });
+      this.at(6.4, 'cuffL', () => { D.putCuffs('L'); g.audio.cuffs && g.audio.cuffs(); });
+      this.at(6.75, 'cuffR', () => { D.putCuffs('R'); g.audio.cuffs && g.audio.cuffs(); this.big(t('cine.cuffed'), 'bad'); });
+      this.at(7.0, 'photo', () => (this.photo = this.capture()));
+      this.at(7.3, 'rights', () => this.sub(who, t('cine.a.rights'), 2.4));
+      this.at(8.1, 'up', () => { O2.setPose('stand'); D.lie(false); D.setPose('handsBehind'); this.sub(who, t('cine.a.up2'), 1.2); });
+      this.at(8.9, 'walk', () => {
         const A = this.A, cl = cruiserLeft(A);
         const sd = Math.sign((D.x - A.x) * cl.x + (D.z - A.z) * cl.z) || 1;
         const rd = off(A, cl, sd * 1.15, P2(A.tx, A.tz), -0.55);
@@ -814,46 +838,171 @@
         O2.setPose('escort');
         O2.follow = { fig: D, side: -0.42, back: 0.38 };
       });
-      this.at(8.0, 'o1back', () => { O1.setPose('stand'); O1.go(this.route(O1, this.home(O1)), 1.4, (f) => f.show(false)); });
-      if (O3) this.at(8.2, 'o3back', () => { O3.setPose('stand'); O3.go(this.route(O3, this.home(O3)), 1.4, (f) => f.show(false)); });
+      this.at(9.2, 'o1back', () => { O1.setPose('stand'); O1.go(this.route(O1, this.home(O1)), 1.4, (f) => f.show(false)); });
+      if (O3) this.at(9.4, 'o3back', () => { O3.setPose('stand'); O3.go(this.route(O3, this.home(O3)), 1.4, (f) => f.show(false)); });
       if (this.inAt != null) {
         this.at(this.inAt + 0.55, 'in', () => { D.show(false); O2.follow = null; O2.setPose('stand'); g.audio.thud(0.25); });
         this.at(this.inAt + 0.8, 'radio', () => this.sub(t('cine.who.radio'), t('cine.a.radio'), 2.2));
-        this.at(this.inAt + 2.4, 'fade', () => this.fadeOut());
+        this.at(this.inAt + 2.6, 'toStation', () => this.toStation());
       }
-      if (this.t > 17) this.fadeOut();
+      if (this.t > 21) this.toStation();
+    }
+    // ---------------------------------------------------------------- the station: booking photos, cuffed to the pole
+    toStation() {
+      if (this.toSt) return;
+      this.toSt = true;
+      this.fade(1, 600);
+      setTimeout(() => { if (!this.ended) this.enterStation(); }, 650);
+    }
+    enterStation() {
+      const g = this.game;
+      const S = (this.room = Station.get(g));
+      S.show(true);
+      S.openDoor(true);
+      this.indoor = true;
+      this.phase = 'station';
+      this.st = this.t;
+      for (const f of this.figs) f.show(false);
+      const D = this.D;
+      D.floorY = S.y;
+      D.lie(false);
+      D.lean = 0;
+      D.lookSide = 0;
+      const entry = S.p(-1.0, 3.5);
+      D.place(entry.x, entry.z, Math.PI);
+      D.setPose('handsBehind', true);
+      D.putCuffs('both');
+      D.show(true);
+      const S1 = (this.S1 = new SB.People.Figure(g, 'officer'));
+      S1.floorY = S.y;
+      const e1 = S.p(-0.6, 3.95);
+      S1.place(e1.x, e1.z, Math.PI);
+      S1.setPose('escort', true);
+      const S2 = (this.S2 = new SB.People.Figure(g, 'officer'));
+      S2.floorY = S.y;
+      const e2 = S.p(-2.2, -0.45);
+      S2.place(e2.x, e2.z, Math.PI);
+      S2.setPose('stand', true);
+      this.figs.push(S1, S2);
+      S.placard(g.save.stats.busted || 1, g.save.day || 1);
+      g.sirenLevel = 0;
+      this.fade(0, 700);
+      this.big(t('cine.s.title'));
+      g.audio.thud(0.3);
+    }
+    stationBeats() {
+      const g = this.game, S = this.room, D = this.D, S1 = this.S1, S2 = this.S2, st = this.st;
+      const who = t('cine.who.officer'), clerk = t('cine.who.clerk');
+      this.at(st + 0.4, 'walkIn', () => {
+        D.go([S.p(-1.0, 2.6), S.p(-1.6, -1.6), S.p(-2.5, -2.7), S.mug], 1.4, () => { this.mugAt = this.t; D.face(S.cam.x, S.cam.z); });
+        S1.follow = { fig: D, side: -0.42, back: 0.4 };
+      });
+      if (this.mugAt != null) {
+        const a = this.mugAt;
+        this.at(a + 0.2, 'mugPrep', () => {
+          S1.follow = null;
+          S1.setPose('stand');
+          S1.go([S.p(-1.15, -2.7)], 1.2, () => S1.face(D.x, D.z));
+          S2.face(D.x, D.z);
+          D.holdPlacard(S.placardMat);
+          this.sub(clerk, t('cine.s.look'), 1.3);
+        });
+        this.at(a + 1.4, 'flash1', () => { this.flash(); this.mug1 = this.capture(true); });
+        this.at(a + 2.1, 'turn', () => { D.face(D.x - 5, D.z); this.sub(clerk, t('cine.s.side'), 1.1); });
+        this.at(a + 3.2, 'flash2', () => { this.flash(); this.mug2 = this.capture(true); });
+        this.at(a + 4.0, 'toCell', () => {
+          D.dropPlacard();
+          this.sub(who, t('cine.s.cell'), 1.4);
+          S1.setPose('escort');
+          S1.follow = { fig: D, side: -0.42, back: 0.4 };
+          D.go([S.p(-1.2, -1.9), S.p(0.8, -1.9), S.p(2.7, -1.9), S.p(4.1, -2.1), S.seat], 1.35, () => {
+            this.cellAt = this.t;
+            D.face(D.x - 5, D.z);
+            D.setPose('sit');
+            S1.follow = null;
+            S1.setPose('stand');
+            S1.go([S.p(4.15, -3.35)], 1.2, () => S1.face(S.pole.x, S.pole.z));
+          });
+        });
+      }
+      if (this.cellAt != null) {
+        const c = this.cellAt;
+        this.at(c + 0.7, 'cuffPrep', () => { S1.setPose('cuff'); D.removeCuffs(); });
+        this.at(c + 1.0, 'arm', () => D.setPose('sitCuffed'));
+        this.at(c + 1.7, 'toPole', () => {
+          const w = D.wristPos('R', new T.Vector3());
+          D.cuffTo(new T.Vector3(S.pole.x, w.y, S.pole.z));
+          g.audio.cuffs && g.audio.cuffs();
+          this.big(t('cine.s.pole'), 'bad');
+        });
+        this.at(c + 2.5, 'leave', () => { S1.setPose('stand'); S1.go([S.p(2.7, -1.9), S.p(0.6, -1.9)], 1.4, () => S1.face(D.x, D.z)); });
+        this.at(c + 4.6, 'door', () => { S.openDoor(false); g.audio.clank(0.45); });
+        this.at(c + 5.2, 'night', () => this.sub(who, t('cine.s.night'), 2.4));
+        this.at(c + 7.6, 'morning', () => this.big(t('cine.s.morning')));
+        this.at(c + 8.8, 'fade', () => this.fadeOut());
+      }
+      if (this.t - st > 40) this.fadeOut();
+    }
+    flash() {
+      const f = document.getElementById('flash');
+      f.style.transition = 'none';
+      f.style.opacity = 0.9;
+      requestAnimationFrame(() => { f.style.transition = 'opacity 0.6s ease-out'; f.style.opacity = 0; });
+      this.game.audio.click();
+      this.game.audio.burst(5200, 1.5, 0.25, 0.08, 'highpass');
     }
 
     // ---------------------------------------------------------------- camera
+    shot() {
+      if (this.kind === 'ticket') return this.arrived == null ? 'tA' : 'tB';
+      if (this.phase === 'station') {
+        if (this.mugAt == null) return 'stIn';
+        if (!this.done.toCell) return 'stMug';
+        if (this.cellAt == null || this.t < this.cellAt + 0.3) return 'stWalk';
+        return this.t < this.cellAt + 3.8 ? 'stPole' : 'stBars';
+      }
+      if (this.reportShot) return 'orbit';
+      return this.t < 2.9 ? 'shoulder' : this.t < 5.9 ? 'wide' : this.t < 8.0 ? 'cuffs' : 'orbit';
+    }
     camera(cam, rdt) {
       const g = this.game, W = g.world;
-      const shot = this.kind === 'ticket' ? (this.arrived == null ? 'tA' : 'tB') : this.reportShot ? 'orbit' : this.t < 2.9 ? 'shoulder' : this.t < 5.3 ? 'wide' : this.t < 7.5 ? 'cuffs' : 'orbit';
+      const shot = this.shot();
       const snap = shot !== this.camShot;
       this.camShot = shot;
       const gy = (p) => W.heightAt(p.x, p.z);
-      let eye, look;
-      const F = this.F, SL = this.SL;
+      let eye, look, fov = 52;
+      const F = this.F, SL = this.SL, D = this.D;
+      if (this.indoor) {
+        const S = this.room, Y = S.y, head = () => new T.Vector3(D.x, Y + 1.45, D.z);
+        if (shot === 'stIn') { eye = S.p(2.2, 2.3); eye.y = Y + 2.3; look = head(); fov = 55; } else if (shot === 'stMug') { eye = P2(S.cam.x, S.cam.z - 0.3); eye.y = Y + 1.5; look = new T.Vector3(S.mug.x, Y + 1.42, S.mug.z); fov = 34; } else if (shot === 'stWalk') { eye = S.p(-1.0, 1.4); eye.y = Y + 2.0; look = head(); fov = 55; } else if (shot === 'stPole') {
+          eye = S.p(3.0, -1.55);
+          eye.y = Y + 1.45;
+          look = new T.Vector3((D.x + S.pole.x) / 2, Y + 1.0, (D.z + S.pole.z) / 2);
+          fov = 42;
+        } else { eye = S.p(0.7, -1.25); eye.y = Y + 1.45; look = new T.Vector3(S.seat.x, Y + 0.95, S.seat.z - 0.2); fov = 46; }
+        this.camTo(cam, rdt, snap, new T.Vector3(eye.x, eye.y, eye.z), look, fov);
+        return;
+      }
       if (shot === 'shoulder') {
         const O = this.O1;
         const dx = this.door.x - O.x, dz = this.door.z - O.z, l = Math.hypot(dx, dz) || 1;
         const ux = dx / l, uz = dz / l;
         eye = P2(O.x - ux * 1.9 - uz * 1.25, O.z - uz * 1.9 + ux * 1.25);
         eye.y = gy(O) + 1.85;
-        const D = this.D;
-        look = this.t > 3.2 ? new T.Vector3(D.x, gy(D) + 1.25, D.z) : new T.Vector3(this.door.x, gy(this.door) + 1.0, this.door.z);
+        look = this.t > 3.2 ? new T.Vector3(D.x, gy(D) + 1.1, D.z) : new T.Vector3(this.door.x, gy(this.door) + 1.0, this.door.z);
+        fov = 48;
       } else if (shot === 'wide') {
         // high, square-on to the door: the officers stand in an arc below the line of sight
         eye = off(this.door, SL, 6.2, F, 0.9);
         eye.y = gy(eye) + 4.3;
-        const q = off(this.door, SL, 0.5);
-        look = new T.Vector3(q.x, gy(q) + 1.0, q.z);
+        const q = off(this.door, SL, 0.6, F, 0.3);
+        look = new T.Vector3(q.x, gy(q) + 0.8, q.z);
       } else if (shot === 'cuffs') {
-        const D = this.D;
-        const w = D.vis ? D.wristPos('L', new T.Vector3()).lerp(D.wristPos('R', new T.Vector3()), 0.5) : new T.Vector3(this.door.x, gy(this.door) + 1.1, this.door.z);
-        const e = off(D, SL, 1.25, F, 0.85);
-        eye = P2(e.x, e.z);
-        eye.y = gy(D) + 1.4;
+        const w = D.wristPos('L', new T.Vector3()).lerp(D.wristPos('R', new T.Vector3()), 0.5);
+        eye = off(w, F, 1.5, SL, 0.9);
+        eye.y = gy(w) + 1.35;
         look = w;
+        fov = 42;
       } else if (shot === 'tA') {
         eye = off(this.C, F, this.hl + 3.0, SL, this.hw + 2.6);
         eye.y = gy(eye) + 1.5;
@@ -864,8 +1013,8 @@
         eye.y = gy(eye) + 1.6;
         look = new T.Vector3((O.x + this.window.x) / 2 - SL.x * 0.5, gy(O) + 1.3, (O.z + this.window.z) / 2 - SL.z * 0.5);
       } else {
-        const A = this.A, D = this.D;
-        const c = D && D.vis ? P2((D.x + A.x) / 2, (D.z + A.z) / 2) : P2((this.C.x + A.x) / 2, (this.C.z + A.z) / 2);
+        const A = this.A;
+        const c = D.vis ? P2((D.x + A.x) / 2, (D.z + A.z) / 2) : P2((this.C.x + A.x) / 2, (this.C.z + A.z) / 2);
         if (this.orbitA == null) this.orbitA = Math.atan2(SL.x, SL.z) + 0.7;
         this.orbitA += rdt * 0.2;
         eye = P2(c.x + Math.sin(this.orbitA) * 9, c.z + Math.cos(this.orbitA) * 9);
@@ -875,20 +1024,23 @@
       // keep the camera out of walls: pull it toward the subject
       let ex = eye.x, ez = eye.z;
       for (let i = 0; i < 12 && blocked(W, ex, ez, 0.4); i++) { ex += (look.x - ex) * 0.2; ez += (look.z - ez) * 0.2; }
-      const tgt = new T.Vector3(ex, Math.max(eye.y, W.heightAt(ex, ez) + 0.5), ez);
+      this.camTo(cam, rdt, snap, new T.Vector3(ex, Math.max(eye.y, W.heightAt(ex, ez) + 0.5), ez), look, fov);
+    }
+    camTo(cam, rdt, snap, tgt, look, fov) {
       if (snap || !this.camLook) { cam.position.copy(tgt); this.camLook = look.clone(); } else {
-        const k = 1 - Math.exp(-rdt * 4);
-        cam.position.lerp(tgt, k);
+        cam.position.lerp(tgt, 1 - Math.exp(-rdt * 4));
         this.camLook.lerp(look, 1 - Math.exp(-rdt * 6));
       }
       cam.up.set(0, 1, 0);
       cam.lookAt(this.camLook);
-      cam.fov = shot === 'cuffs' ? 42 : shot === 'shoulder' ? 48 : 52;
+      cam.fov = fov;
       cam.updateProjectionMatrix();
     }
     dispose(clearCars) {
       for (const f of this.figs) if (!this.police.leftovers.some((l) => l.fig === f)) f.dispose();
       this.figs = [];
+      if (this.room) { this.room.show(false); this.room = null; }
+      this.indoor = false;
       clearTimeout(this._subT);
       try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) { /* ignore */ }
       this.dom.hidden = true;
@@ -896,6 +1048,141 @@
       this.fadeEl.style.transition = 'none';
       this.fadeEl.style.opacity = 0;
       if (clearCars) this.game.traffic.clearPolice();
+    }
+  }
+
+  // ------------------------------------------------------------------ the police station set (built once, far above the city)
+  function fitText(g, text, w, size, weight) {
+    let px = size;
+    g.font = weight + ' ' + px + 'px "Barlow Condensed", Arial, sans-serif';
+    const m = g.measureText(text).width;
+    if (m > w) { px = Math.floor((size * w) / m); g.font = weight + ' ' + px + 'px "Barlow Condensed", Arial, sans-serif'; }
+  }
+  function canvasTex(w, h, draw) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    draw(c.getContext('2d'), w, h);
+    const tx = new T.CanvasTexture(c);
+    tx.anisotropy = 4;
+    return tx;
+  }
+  class Station {
+    static get(game) { return game._station || (game._station = new Station(game)); }
+    constructor(game) {
+      this.game = game;
+      this.x0 = 0; this.y = 640; this.z0 = 0;
+      const grp = (this.grp = new T.Group());
+      grp.position.set(this.x0, this.y, this.z0);
+      grp.visible = false;
+      game.scene.add(grp);
+      const M = (o) => new T.MeshStandardMaterial(Object.assign({ roughness: 0.85, metalness: 0 }, o));
+      const box = (w, h, d, m, x, y, z) => { const o = new T.Mesh(new T.BoxGeometry(w, h, d), m); o.position.set(x, y, z); grp.add(o); return o; };
+      const tile = canvasTex(128, 128, (g) => { g.fillStyle = '#8d9496'; g.fillRect(0, 0, 128, 128); g.fillStyle = '#7b8284'; g.fillRect(0, 0, 64, 64); g.fillRect(64, 64, 64, 64); g.strokeStyle = 'rgba(0,0,0,0.25)'; g.strokeRect(0, 0, 128, 128); });
+      tile.wrapS = tile.wrapT = T.RepeatWrapping;
+      tile.repeat.set(5, 4);
+      const wallTex = canvasTex(64, 256, (g, w, h) => { g.fillStyle = '#d9dccf'; g.fillRect(0, 0, w, h); g.fillStyle = '#6f8f7d'; g.fillRect(0, h * 0.62, w, h * 0.38); g.fillStyle = '#4f6a5b'; g.fillRect(0, h * 0.6, w, h * 0.03); });
+      wallTex.wrapS = T.RepeatWrapping;
+      const floor = new T.Mesh(new T.PlaneGeometry(10, 8).rotateX(-Math.PI / 2), M({ map: tile, roughness: 0.6 }));
+      grp.add(floor);
+      box(10, 0.1, 8, M({ color: 0xe6e6e1 }), 0, 3.05, 0);
+      for (const [w, x, z, ry] of [[10, 0, -4, 0], [10, 0, 4, 0], [8, -5, 0, Math.PI / 2], [8, 5, 0, Math.PI / 2]]) {
+        const tx = wallTex.clone();
+        tx.needsUpdate = true;
+        tx.repeat.set(w / 1.5, 1);
+        const o = new T.Mesh(new T.PlaneGeometry(w, 3.05), M({ map: tx, side: T.DoubleSide }));
+        o.position.set(x, 1.525, z);
+        o.rotation.y = ry;
+        grp.add(o);
+      }
+      // ceiling lamps, doorway, desk, sign
+      for (const [x, z] of [[-2.5, -2], [2.5, -2], [-2.5, 2], [2.5, 2]]) box(1.3, 0.04, 0.3, new T.MeshBasicMaterial({ color: 0xf4f7ff }), x, 2.98, z);
+      box(1.1, 2.2, 0.06, M({ color: 0x3b3f44 }), -1.0, 1.1, 3.96);
+      box(1.6, 0.06, 0.8, M({ color: 0x6b4f37 }), -4.1, 0.78, 2.0);
+      for (const [x, z] of [[-4.8, 1.7], [-3.4, 1.7], [-4.8, 2.3], [-3.4, 2.3]]) box(0.05, 0.75, 0.05, M({ color: 0x333333 }), x, 0.375, z);
+      box(0.5, 0.35, 0.05, M({ color: 0x15181c, emissive: 0x2a4f7a, emissiveIntensity: 0.6 }), -4.1, 1.0, 1.85);
+      const sign = canvasTex(512, 96, (g, w, h) => { g.fillStyle = '#16233f'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; fitText(g, SB.i18n.t('cine.s.sign'), w * 0.92, 46, 800); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(SB.i18n.t('cine.s.sign'), w / 2, h / 2 + 2); });
+      const sg = new T.Mesh(new T.PlaneGeometry(2.4, 0.45), M({ map: sign }));
+      sg.position.set(-4.96, 2.4, 0.2);
+      sg.rotation.y = Math.PI / 2;
+      grp.add(sg);
+      const cellSign = canvasTex(512, 96, (g, w, h) => { g.fillStyle = '#7a1f1a'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; fitText(g, SB.i18n.t('cine.s.cellSign'), w * 0.92, 54, 800); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(SB.i18n.t('cine.s.cellSign'), w / 2, h / 2 + 2); });
+      const cs = new T.Mesh(new T.PlaneGeometry(1.8, 0.34), M({ map: cellSign }));
+      cs.position.set(1.44, 2.75, -2.0);
+      cs.rotation.y = -Math.PI / 2;
+      grp.add(cs);
+      // height chart behind the booking spot, camera on a tripod
+      const chart = canvasTex(256, 320, (g, w, h) => {
+        g.fillStyle = '#e9ebe4'; g.fillRect(0, 0, w, h);
+        g.fillStyle = '#20242a'; g.font = '700 15px Arial, sans-serif'; g.textBaseline = 'middle';
+        for (let cm = 0; cm <= 240; cm += 5) {
+          const y = h - (cm / 240) * h;
+          const big = cm % 50 === 0, mid = cm % 10 === 0;
+          g.fillRect(0, y - (big ? 1.5 : 0.5), big ? w : mid ? w * 0.18 : w * 0.08, big ? 3 : 1);
+          if (mid) { g.fillRect(w - (big ? w : w * 0.18), y - 0.5, w * 0.18, 1); }
+          if (mid && cm >= 120 && cm <= 220) g.fillText(String(cm), w * 0.2, y - 7);
+        }
+      });
+      const ch = new T.Mesh(new T.PlaneGeometry(2.0, 2.5), M({ map: chart }));
+      ch.position.set(-2.5, 1.25, -3.98);
+      grp.add(ch);
+      const dark = M({ color: 0x1b1d20, roughness: 0.5 });
+      for (let k = 0; k < 3; k++) { const leg = box(0.03, 1.4, 0.03, dark, -2.5 + Math.sin(k * 2.1) * 0.25, 0.68, -1.0 + Math.cos(k * 2.1) * 0.25); leg.rotation.set(Math.cos(k * 2.1) * 0.18, 0, -Math.sin(k * 2.1) * 0.18); }
+      box(0.2, 0.15, 0.22, dark, -2.5, 1.45, -1.0);
+      box(0.09, 0.09, 0.08, M({ color: 0x0a0a0a, metalness: 0.5, roughness: 0.2 }), -2.5, 1.45, -1.14);
+      // holding cell: bars on x = 1.5 with a sliding door, wall at z = 0, a bench and the pole
+      const steel = M({ color: 0x50565c, metalness: 0.8, roughness: 0.35 });
+      const barG = new T.CylinderGeometry(0.022, 0.022, 3.0, 6);
+      const bars = (z0, z1, parent, x) => { for (let z = z0; z <= z1 + 1e-6; z += 0.15) { const b = new T.Mesh(barG, steel); b.position.set(x, 1.5, z); parent.add(b); } for (const y of [0.08, 1.2, 2.95]) { const r = new T.Mesh(new T.BoxGeometry(0.05, 0.05, z1 - z0 + 0.05), steel); r.position.set(x, y, (z0 + z1) / 2); parent.add(r); } };
+      bars(-3.95, -2.65, grp, 1.5);
+      bars(-1.35, -0.05, grp, 1.5);
+      const door = (this.door = new T.Group());
+      bars(-2.6, -1.4, door, 1.45);
+      grp.add(door);
+      const cw = new T.Mesh(new T.PlaneGeometry(3.5, 3.05), M({ map: wallTex, side: T.DoubleSide }));
+      cw.position.set(3.25, 1.525, 0);
+      grp.add(cw);
+      box(0.55, 0.45, 2.9, M({ color: 0x8a6a4c }), 4.7, 0.225, -2.45);
+      this.poleLocal = new T.Vector3(4.86, 0, -2.98);
+      const pole = new T.Mesh(new T.CylinderGeometry(0.035, 0.035, 3.0, 10), steel);
+      pole.position.set(this.poleLocal.x, 1.5, this.poleLocal.z);
+      grp.add(pole);
+      grp.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+      // spots in world coordinates
+      this.mug = this.p(-2.5, -3.5);
+      this.cam = this.p(-2.5, -1.0);
+      this.seat = this.p(4.68, -2.45);
+      this.pole = this.p(this.poleLocal.x, this.poleLocal.z);
+      this.doorT = 1;
+      this.doorK = 1;
+      this.placardMat = new T.MeshStandardMaterial({ roughness: 0.7 });
+    }
+    p(x, z) { return P2(this.x0 + x, this.z0 + z); }
+    show(on) {
+      this.grp.visible = on;
+      const sc = this.game.scene;
+      if (on && !this.light) {
+        // a room light only while the scene is on (adding it recompiles shaders, so it happens under the fade)
+        this.light = new T.PointLight(0xf2f5ff, 1.7, 18, 1);
+        this.light.position.set(this.x0, this.y + 2.7, this.z0 - 1.2);
+        sc.add(this.light);
+      } else if (!on && this.light) { sc.remove(this.light); this.light = null; }
+    }
+    openDoor(open) { this.doorT = open ? 1 : 0; if (open) { this.doorK = 1; this.door.position.z = 1.2; } }
+    update(dt) {
+      this.doorK += (this.doorT - this.doorK) * Math.min(1, dt * 5);
+      this.door.position.z = 1.2 * this.doorK;
+    }
+    placard(n, day) {
+      if (this.placardMat.map) this.placardMat.map.dispose();
+      this.placardMat.map = canvasTex(320, 180, (g, w, h) => {
+        g.fillStyle = '#121416'; g.fillRect(0, 0, w, h);
+        g.strokeStyle = '#d9d9d9'; g.lineWidth = 4; g.strokeRect(6, 6, w - 12, h - 12);
+        g.fillStyle = '#fff'; g.textAlign = 'center';
+        g.font = '800 30px "Barlow Condensed", Arial, sans-serif'; g.fillText(SB.i18n.t('cine.s.board'), w / 2, 48);
+        g.font = '700 50px "JetBrains Mono", monospace'; g.fillText(String(4200 + n).padStart(6, '0'), w / 2, 108);
+        g.font = '600 24px "Barlow Condensed", Arial, sans-serif'; g.fillText(SB.i18n.t('cine.s.boardDay', { d: day }), w / 2, 150);
+      });
+      this.placardMat.needsUpdate = true;
     }
   }
 

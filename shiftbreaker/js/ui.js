@@ -879,7 +879,7 @@
       p.classList.add('bust');
       const s = Math.floor(r.chase);
       const total = r.fine + r.impound;
-      const photo = r.photo ? `<img alt="" src="${r.photo}">` : '';
+      const photo = r.mugs ? `<div class="bust-mugs">${r.mugs.filter(Boolean).map((m) => `<img alt="" src="${m}">`).join('')}</div>` : r.photo ? `<img alt="" src="${r.photo}">` : '';
       const rows = [
         [t('bust.chase'), Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')],
         [t('bust.stars'), '★'.repeat(r.stars) + '☆'.repeat(5 - r.stars)],
@@ -889,7 +889,7 @@
         [t('bust.impound'), '−' + U.fmtInt(r.impound) + ' ' + t('ui.cr')],
         [t('bust.points'), '−' + r.points],
       ];
-      body.appendChild(this.el('div', 'bust-grid', `<div class="bust-photo">${photo}<span class="cap">${esc(t('bust.photo'))} · ${esc(g.env.clockText())}</span><span class="stamp">${esc(t('bust.stamp'))}</span></div>
+      body.appendChild(this.el('div', 'bust-grid', `<div class="bust-photo">${photo}<span class="cap">${esc(t(r.mugs ? 'bust.mug' : 'bust.photo'))} · ${esc(g.env.clockText())}</span><span class="stamp">${esc(t('bust.stamp'))}</span></div>
         <div class="bust-rows">${rows.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}<div class="tot"><span>${esc(t('bust.total'))}</span><b>−${U.fmtInt(g.settings.fines ? total : 0)} ${esc(t('ui.cr'))}</b></div></div>`));
       foot.appendChild(this.btn(esc(t('bust.leave')), done, 'primary'));
       this.open(p, 'center');
