@@ -779,7 +779,7 @@
     }
     input() {
       const s = this.struggle;
-      if (s && !s.done) { s.presses++; s.meter = Math.min(1, s.meter + s.gain); this.D.wiggle = 1; this.game.audio.thud(0.06); return; }
+      if (s && !s.done) { s.presses++; s.meter = Math.min(1, s.meter + s.gain); if (s.meter >= 1) s.won = true; this.D.wiggle = 1; this.game.audio.thud(0.06); return; }
       this.skip();
     }
     skip() {
@@ -905,19 +905,9 @@
       this.at(6.75, 'cuffR', () => { D.putCuffs('R'); g.audio.cuffs && g.audio.cuffs(); this.big(t('cine.cuffed'), 'bad'); });
       this.at(7.0, 'photo', () => (this.photo = this.capture()));
       this.at(6.95, 'tight', () => this.sub(t('cine.who.you'), t('cine.a.tight'), 1.0));
-      this.at(7.4, 'frisk', () => { O2.setPose('frisk'); this.sub(t('cine.who.officer2'), t('cine.a.frisk'), 1.2, true); });
-      this.at(8.0, 'no2', () => { D.wiggle = 0.6; this.sub(t('cine.who.you'), t('cine.a.okay'), 0.9, true); });
-      this.at(8.9, 'cash', () => {
-        O2.setPose('kneel');
-        O2.cash.visible = true;
-        this.found = this.cash;
-        this.big(t('cine.a.cashBig', { n: U.fmtInt(this.cash) }), 'bad');
-        this.sub(t('cine.who.officer2'), t('cine.a.cash'), 1.6, true);
-        g.audio.fail();
-      });
-      this.at(9.9, 'rights', () => { O2.cash.visible = false; this.sub(who, t('cine.a.rights'), 2.0); });
-      this.at(10.5, 'up', () => { O2.setPose('stand'); D.lie(false); D.setPose('handsBehind'); this.sub(who, t('cine.a.up2'), 1.2, true); });
-      this.at(11.3, 'walk', () => {
+      this.at(7.6, 'rights', () => this.sub(who, t('cine.a.rights'), 2.0));
+      this.at(8.1, 'up', () => { O2.setPose('stand'); D.lie(false); D.setPose('handsBehind'); this.sub(who, t('cine.a.up2'), 1.2, true); });
+      this.at(8.9, 'walk', () => {
         const A = this.A, cl = cruiserLeft(A);
         const sd = Math.sign((D.x - A.x) * cl.x + (D.z - A.z) * cl.z) || 1;
         const rd = off(A, cl, sd * 1.15, P2(A.tx, A.tz), -0.55);
@@ -925,14 +915,14 @@
         O2.setPose('escort');
         O2.follow = { fig: D, side: -0.42, back: 0.38 };
       });
-      this.at(11.6, 'o1back', () => { O1.setPose('stand'); O1.go(this.route(O1, this.home(O1)), 1.4, (f) => f.show(false)); });
-      if (O3) this.at(11.8, 'o3back', () => { O3.setPose('stand'); O3.go(this.route(O3, this.home(O3)), 1.4, (f) => f.show(false)); });
+      this.at(9.2, 'o1back', () => { O1.setPose('stand'); O1.go(this.route(O1, this.home(O1)), 1.4, (f) => f.show(false)); });
+      if (O3) this.at(9.4, 'o3back', () => { O3.setPose('stand'); O3.go(this.route(O3, this.home(O3)), 1.4, (f) => f.show(false)); });
       if (this.inAt != null) {
         this.at(this.inAt + 0.55, 'in', () => { D.show(false); O2.follow = null; O2.setPose('stand'); g.audio.thud(0.25); });
         this.at(this.inAt + 0.8, 'radio', () => this.sub(t('cine.who.radio'), t('cine.a.radio'), 2.2));
         this.at(this.inAt + 2.6, 'toStation', () => this.toStation());
       }
-      if (this.bt > 24) this.toStation();
+      if (this.bt > 21) this.toStation();
     }
     // ---------------------------------------------------------------- resisting on the ground
     startStruggle() {
@@ -952,7 +942,7 @@
       const el = document.getElementById('cineStruggle');
       el.querySelector('i').style.width = Math.round(s.meter * 100) + '%';
       el.querySelector('b').style.width = Math.round(U.clamp(1 - s.t / 3.2, 0, 1) * 100) + '%';
-      if (s.meter >= 1) this.endStruggle('free');
+      if (s.won) this.endStruggle('free');
       else if (s.t >= 3.2) this.endStruggle(s.presses ? 'ko' : 'calm');
     }
     endStruggle(how) {
@@ -1019,6 +1009,7 @@
       const S = (this.room = Station.get(g));
       S.show(true);
       S.openDoor(true);
+      S.tray(null);
       this.indoor = true;
       this.paused = false;
       this.phase = 'station';
@@ -1087,9 +1078,38 @@
       }
       this.at(st + 1.4, 'sob', () => this.sub('', t('cine.s.sob'), 2));
       this.at(st + 0.4, 'walkIn', () => {
-        D.go([S.p(-1.0, 2.6), S.p(-1.6, -1.6), S.p(-2.5, -2.7), S.mug], 1.4, () => { this.mugAt = this.bt; D.face(S.cam.x, S.cam.z); });
+        D.go([S.p(-1.0, 2.6), S.p(-2.2, -1.2), S.p(-4.3, -2.9), S.wall], 1.4, () => { this.wallAt = this.bt; D.face(S.wall.x, S.wall.z - 5); });
         S1.follow = { fig: D, side: -0.42, back: 0.4 };
       });
+      // search: hands on the wall, pockets emptied into the tray
+      if (this.wallAt != null) {
+        const w = this.wallAt;
+        this.at(w + 0.2, 'wallGo', () => {
+          S1.follow = null;
+          S1.setPose('stand');
+          S1.go([S.p(-4.05, -2.8)], 1.2, () => S1.face(D.x, D.z));
+          this.sub(who, t('cine.s.wall'), 1.4, true);
+        });
+        this.at(w + 0.8, 'uncuff', () => { D.removeCuffs(); g.audio.cuffs && g.audio.cuffs(); D.setPose('wallHands'); });
+        this.at(w + 1.5, 'frisk', () => { S1.setPose('friskStand'); this.sub(who, t('cine.s.frisk'), 1.4, true); });
+        this.at(w + 2.3, 'keys', () => { S.tray('keys'); g.audio.click(); });
+        this.at(w + 2.8, 'phone', () => { S.tray('phone'); g.audio.click(); });
+        this.at(w + 3.4, 'cash', () => {
+          S.tray('cash');
+          this.found = this.cash;
+          this.big(t('cine.a.cashBig', { n: U.fmtInt(this.cash) }), 'bad');
+          this.sub(who, t('cine.a.cash'), 1.6, true);
+          g.audio.fail();
+        });
+        this.at(w + 5.0, 'recuff', () => {
+          D.setPose('handsBehind');
+          D.putCuffs('both');
+          g.audio.cuffs && g.audio.cuffs();
+          S1.setPose('escort');
+          S1.follow = { fig: D, side: -0.42, back: 0.4 };
+          D.go([S.p(-3.4, -2.8), S.mug], 1.3, () => { this.mugAt = this.bt; D.face(S.cam.x, S.cam.z); });
+        });
+      }
       if (this.mugAt != null) {
         const a = this.mugAt;
         this.at(a + 0.2, 'mugPrep', () => {
@@ -1161,6 +1181,7 @@
       if (this.kind === 'ticket') return this.arrived == null ? 'tA' : 'tB';
       if (this.phase === 'station') {
         if (this.woke) return 'stBars';
+        if (this.wallAt != null && this.mugAt == null) return 'stWall';
         if (this.mugAt == null) return 'stIn';
         if (!this.done.toCell) return 'stMug';
         if (this.cellAt == null || this.bt < this.cellAt + 0.3) return 'stWalk';
@@ -1169,7 +1190,7 @@
       if (this.reportShot) return 'orbit';
       if ((this.struggle && !this.struggle.done) || this.koAt != null) return 'cuffs';
       if (this.freeAt != null) return 'wide';
-      return this.bt < 2.9 ? 'shoulder' : this.bt < 5.9 ? 'wide' : this.bt < 10.4 ? 'cuffs' : 'orbit';
+      return this.bt < 2.9 ? 'shoulder' : this.bt < 5.9 ? 'wide' : this.bt < 8.0 ? 'cuffs' : 'orbit';
     }
     camera(cam, rdt) {
       const g = this.game, W = g.world;
@@ -1181,7 +1202,7 @@
       const F = this.F, SL = this.SL, D = this.D;
       if (this.indoor) {
         const S = this.room, Y = S.y, head = () => new T.Vector3(D.x, Y + 1.45, D.z);
-        if (shot === 'stIn') { eye = S.p(2.2, 2.3); eye.y = Y + 2.3; look = head(); fov = 55; } else if (shot === 'stMug') { eye = P2(S.cam.x, S.cam.z - 0.3); eye.y = Y + 1.5; look = new T.Vector3(S.mug.x, Y + 1.42, S.mug.z); fov = 34; } else if (shot === 'stWalk') { eye = S.p(-1.0, 1.4); eye.y = Y + 2.0; look = head(); fov = 55; } else if (shot === 'stPole') {
+        if (shot === 'stIn') { eye = S.p(2.2, 2.3); eye.y = Y + 2.3; look = head(); fov = 55; } else if (shot === 'stWall') { eye = S.p(-2.5, -1.9); eye.y = Y + 1.7; look = new T.Vector3(S.wall.x - 0.1, Y + 1.15, S.wall.z + 0.35); fov = 52; } else if (shot === 'stMug') { eye = P2(S.cam.x, S.cam.z - 0.3); eye.y = Y + 1.5; look = new T.Vector3(S.mug.x, Y + 1.42, S.mug.z); fov = 34; } else if (shot === 'stWalk') { eye = S.p(-1.0, 1.4); eye.y = Y + 2.0; look = head(); fov = 55; } else if (shot === 'stPole') {
           eye = S.p(3.0, -1.55);
           eye.y = Y + 1.45;
           look = new T.Vector3((D.x + S.pole.x) / 2, Y + 1.0, (D.z + S.pole.z) / 2);
@@ -1357,9 +1378,20 @@
       const pole = new T.Mesh(new T.CylinderGeometry(0.035, 0.035, 3.0, 10), steel);
       pole.position.set(this.poleLocal.x, 1.5, this.poleLocal.z);
       grp.add(pole);
+      // table and tray for the search, with what comes out of the pockets
+      box(0.5, 0.05, 0.8, M({ color: 0x6b4f37 }), -4.65, 0.78, -2.55);
+      for (const [x, z] of [[-4.85, -2.2], [-4.45, -2.2], [-4.85, -2.9], [-4.45, -2.9]]) box(0.04, 0.76, 0.04, M({ color: 0x333333 }), x, 0.38, z);
+      box(0.4, 0.03, 0.55, M({ color: 0x9aa3ab, metalness: 0.6, roughness: 0.4 }), -4.65, 0.82, -2.55);
+      this.items = {
+        keys: box(0.08, 0.02, 0.05, M({ color: 0xc9ced4, metalness: 0.9, roughness: 0.3 }), -4.7, 0.845, -2.75),
+        phone: box(0.08, 0.012, 0.16, M({ color: 0x111316, roughness: 0.3 }), -4.58, 0.84, -2.6),
+        cash: box(0.17, 0.05, 0.08, M({ color: 0x5f9a5b, roughness: 0.9 }), -4.66, 0.855, -2.38),
+      };
+      for (const it of Object.values(this.items)) it.visible = false;
       grp.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
       // spots in world coordinates
       this.mug = this.p(-2.5, -3.5);
+      this.wall = this.p(-4.3, -3.45);
       this.cam = this.p(-2.5, -1.0);
       this.seat = this.p(4.68, -2.45);
       this.pole = this.p(this.poleLocal.x, this.poleLocal.z);
@@ -1378,6 +1410,7 @@
         sc.add(this.light);
       } else if (!on && this.light) { sc.remove(this.light); this.light = null; }
     }
+    tray(item) { if (item) this.items[item].visible = true; else for (const it of Object.values(this.items)) it.visible = false; }
     openDoor(open) { this.doorT = open ? 1 : 0; if (open) { this.doorK = 1; this.door.position.z = 1.2; } }
     update(dt) {
       this.doorK += (this.doorT - this.doorK) * Math.min(1, dt * 5);

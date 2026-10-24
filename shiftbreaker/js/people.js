@@ -55,6 +55,10 @@
     proneArms: { neck: [-0.5, 0, 0], shL: [-2.85, 0, 0.3], elL: [-0.1, 0, 0], shR: [-2.85, 0, -0.3], elR: [-0.1, 0, 0] },
     // patting someone down who lies face down
     frisk: { y: -0.45, chest: [0.7, 0, 0], neck: [0.35, 0, 0], hipL: [-1.5, 0, 0], knL: [1.5, 0, 0], hipR: [0.05, 0, 0], knR: [1.6, 0, 0], shL: [-0.85, -0.2, 0], elL: [-0.2, 0, 0], shR: [-0.85, 0.2, 0], elR: [-0.2, 0, 0] },
+    // hands up on the wall, feet apart (being searched)
+    wallHands: { chest: [0.12, 0, 0], neck: [0.15, 0, 0], shL: [-2.0, 0, 0.35], elL: [-0.25, 0, 0], shR: [-2.0, 0, -0.35], elR: [-0.25, 0, 0], hipL: [0, 0, 0.16], hipR: [0, 0, -0.16] },
+    // searching someone standing at the wall
+    friskStand: { chest: [0.45, 0, 0], neck: [0.25, 0, 0], shL: [-1.15, -0.2, 0], elL: [-0.25, 0, 0], shR: [-1.15, 0.2, 0], elR: [-0.25, 0, 0] },
     // baton raised, then the swing (the scene cuts to black before it lands)
     strikeUp: { chest: [0, -0.25, 0], shR: [-2.75, 0.25, 0], elR: [-0.6, 0, 0], shL: [-0.6, -0.3, 0], elL: [-0.4, 0, 0] },
     strikeDown: { chest: [0.45, 0.1, 0], neck: [0.3, 0, 0], shR: [-0.7, 0.3, 0], elR: [-0.15, 0, 0], shL: [-0.5, -0.3, 0], elL: [-0.4, 0, 0] },
@@ -302,7 +306,7 @@
       for (const n of JOINTS) J[n].rotation.set(this.cur[n].x, this.cur[n].y, this.cur[n].z);
       if (this.lookSide) J.neck.rotation.y += this.lookSide;
       // frisking: hands working along the back and legs
-      if (this.pose === 'frisk') {
+      if (this.pose === 'frisk' || this.pose === 'friskStand') {
         const q = (this.frPh = (this.frPh || 0) + dt);
         J.shL.rotation.x += Math.sin(q * 9) * 0.25;
         J.shR.rotation.x += Math.sin(q * 9 + 1.6) * 0.25;
