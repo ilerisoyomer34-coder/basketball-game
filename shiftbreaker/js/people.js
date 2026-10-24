@@ -46,6 +46,13 @@
     write: { neck: [0.38, 0, 0], shL: [-0.85, -0.5, 0], elL: [-1.25, 0, 0], shR: [-0.75, 0.32, 0], elR: [-1.1, 0, 0] },
     talk: { shL: [0.05, 0, 0.1], elL: [-0.2, 0, 0], shR: [-0.35, 0.2, -0.1], elR: [-1.2, 0, 0] },
     radio: { neck: [0.1, -0.3, 0], shL: [-0.2, -0.2, 0], elL: [-2.1, 0, 0], shR: [0.05, 0, -0.08], elR: [-0.15, 0, 0] },
+    reach: { chest: [0.15, 0, 0], shL: [-1.25, -0.25, 0], elL: [-0.35, 0, 0], shR: [-1.25, 0.25, 0], elR: [-0.35, 0, 0] },
+    // officer down on one knee beside someone lying on the ground
+    kneel: { y: -0.45, chest: [0.55, 0, 0], neck: [0.3, 0, 0], hipL: [-1.5, 0, 0], knL: [1.5, 0, 0], hipR: [0.05, 0, 0], knR: [1.6, 0, 0], shL: [-1.05, -0.25, 0], elL: [-0.35, 0, 0], shR: [-1.05, 0.25, 0], elR: [-0.35, 0, 0] },
+    // on both knees, hands up (about to be put face down)
+    kneelDown: { y: -0.45, hipL: [0.05, 0, 0], hipR: [0.05, 0, 0], knL: [1.6, 0, 0], knR: [1.6, 0, 0], shL: [0, 0, 1.42], elL: [0, 0, 1.75], shR: [0, 0, -1.42], elR: [0, 0, -1.75] },
+    // lying face down (with lie()), arms stretched past the head
+    proneArms: { neck: [-0.5, 0, 0], shL: [-2.85, 0, 0.3], elL: [-0.1, 0, 0], shR: [-2.85, 0, -0.3], elR: [-0.1, 0, 0] },
     sit: { y: -0.42, chest: [0.32, 0, 0], neck: [-0.15, 0, 0], hipL: [-1.35, 0, 0], hipR: [-1.35, 0, 0], knL: [1.45, 0, 0], knR: [1.45, 0, 0], shL: [-0.5, 0, 0.1], shR: [-0.5, 0, -0.1], elL: [-0.6, 0, 0], elR: [-0.6, 0, 0] },
   };
   const JOINTS = ['chest', 'neck', 'shL', 'shR', 'elL', 'elR', 'hipL', 'hipR', 'knL', 'knR'];
@@ -73,6 +80,7 @@
       };
       const shirt = mat(O.shirt), pants = mat(O.pants), skin = mat(O.skin, { roughness: 0.65 }), shoes = mat(O.shoes, { roughness: 0.5 });
       const root = (this.root = new T.Group());
+      root.rotation.order = 'YXZ';
       const J = (this.j = {});
       // pelvis + legs
       J.hips = joint(root, 0, 0.95, 0);
@@ -148,6 +156,9 @@
       this.follow = null;
       this.faceTo = null;
       this.vis = true;
+      this.lean = 0; // forward tilt of the whole body about the feet (π/2: lying face down)
+      this.leanT = 0;
+      this.floorY = null; // indoor sets: a fixed floor height instead of the terrain
       game.scene.add(root);
     }
     place(x, z, yaw) {
@@ -174,6 +185,24 @@
       this.onArrive = done || null;
     }
     face(x, z) { this.faceTo = { x, z }; }
+    lie(on) { this.leanT = on ? Math.PI / 2 : 0; }
+    // a booking board hung in front of the chest
+    holdPlacard(m) {
+      if (!this.placard) {
+        this.placard = new T.Mesh(geo('placard', () => new T.PlaneGeometry(0.42, 0.24)), m);
+        this.placard.position.set(0, 0.2, 0.15);
+        this.j.chest.add(this.placard);
+      }
+      this.placard.material = m;
+      this.placard.visible = true;
+    }
+    dropPlacard() { if (this.placard) this.placard.visible = false; }
+    removeCuffs() {
+      const c = this.cuffs;
+      if (!c) return;
+      c.L.visible = c.R.visible = c.on = false;
+      c.chain.visible = false;
+    }
     show(on) { this.vis = on; this.root.visible = on; if (this.cuffs) this.cuffs.chain.visible = on && this.cuffs.on; }
     putCuffs(side) {
       if (!this.cuffs) {
@@ -238,6 +267,7 @@
         c.z += ((v ? v[2] : 0) - c.z) * k;
       }
       this.curY += ((P.y || 0) - this.curY) * k;
+      this.lean += (this.leanT - this.lean) * (1 - Math.exp(-dt * 4.5));
       const J = this.j, w = this.walkAmt, s = Math.sin(this.walkPh), cs = Math.cos(this.walkPh);
       for (const n of JOINTS) J[n].rotation.set(this.cur[n].x, this.cur[n].y, this.cur[n].z);
       if (this.lookSide) J.neck.rotation.y += this.lookSide;
@@ -264,10 +294,11 @@
       }
     }
     sync(bob) {
-      const y = this.game.world.heightAt(this.x, this.z);
-      this.root.position.set(this.x, y + (bob || 0), this.z);
+      const y = this.floorY != null ? this.floorY : this.game.world.heightAt(this.x, this.z);
+      this.root.position.set(this.x, y + (bob || 0) + Math.sin(this.lean) * 0.13, this.z);
       this.j.hips.position.y = 0.95 + this.curY;
       this.root.rotation.y = this.yaw;
+      this.root.rotation.x = this.lean;
     }
     dispose() {
       this.game.scene.remove(this.root);
