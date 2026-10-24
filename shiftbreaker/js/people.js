@@ -295,6 +295,14 @@
       const J = this.j, w = this.walkAmt, s = Math.sin(this.walkPh), cs = Math.cos(this.walkPh);
       for (const n of JOINTS) J[n].rotation.set(this.cur[n].x, this.cur[n].y, this.cur[n].z);
       if (this.lookSide) J.neck.rotation.y += this.lookSide;
+      // crying: head down, shoulders heaving
+      if (this.sob > 0.01) {
+        const q = (this.sobPh = (this.sobPh || 0) + dt), w = this.sob, h = Math.sin(q * 8.5);
+        J.neck.rotation.x += 0.42 * w;
+        J.chest.rotation.x += (0.12 + h * 0.05) * w;
+        J.shL.rotation.z += h * 0.05 * w;
+        J.shR.rotation.z -= h * 0.05 * w;
+      }
       // struggling on the ground: twist and kick (wiggle fades unless kept up)
       if (this.wiggle > 0.01) {
         const q = (this.wigPh = (this.wigPh || 0) + dt), w = this.wiggle;

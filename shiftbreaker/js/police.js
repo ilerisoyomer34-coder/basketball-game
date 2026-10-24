@@ -621,7 +621,7 @@
       const g = (this.game = police.game);
       this.police = police;
       this.kind = kind;
-      this.bt = 0;
+      this.t = 0;
       this.bt = 0; // beat clock: stops while the driver struggles
       this.done = {};
       this.figs = [];
@@ -819,6 +819,10 @@
       this.t += dt;
       if (!this.paused) this.bt += dt;
       if (this.struggle && !this.struggle.done) this.updateStruggle(dt);
+      if (this.indoor && this.D) {
+        if (this.dragging) this.D.wiggle = Math.max(this.D.wiggle || 0, 0.35 + 0.35 * Math.max(0, Math.sin(this.t * 3)));
+        if (this.D.sob > 0.5 && (this.sobT = (this.sobT || 0) - dt) <= 0) { this.sobT = 1.1 + Math.random() * 0.5; this.game.audio.burst(650, 2, 0.05, 0.28); }
+      }
       if (this.kind === 'ticket') this.ticketBeats(); else if (this.phase === 'station') this.stationBeats(); else this.arrestBeats();
       if (this.room) this.room.update(dt);
       const pl = this.game.player;
@@ -1031,6 +1035,7 @@
         setTimeout(() => { v.style.transition = 'filter 3s ease'; v.style.filter = 'none'; }, 300);
         return;
       }
+      D.sob = 1;
       this.fade(0, 700);
       this.big(t('cine.s.title'));
       g.audio.thud(0.3);
@@ -1045,6 +1050,7 @@
         this.at(st + 9.0, 'fade', () => this.fadeOut());
         return;
       }
+      this.at(st + 1.4, 'sob', () => this.sub('', t('cine.s.sob'), 2));
       this.at(st + 0.4, 'walkIn', () => {
         D.go([S.p(-1.0, 2.6), S.p(-1.6, -1.6), S.p(-2.5, -2.7), S.mug], 1.4, () => { this.mugAt = this.bt; D.face(S.cam.x, S.cam.z); });
         S1.follow = { fig: D, side: -0.42, back: 0.4 };
@@ -1057,19 +1063,23 @@
           S1.go([S.p(-1.15, -2.7)], 1.2, () => S1.face(D.x, D.z));
           S2.face(D.x, D.z);
           D.holdPlacard(S.placardMat);
+          D.sob = 0.25;
           this.sub(clerk, t('cine.s.look'), 1.3);
         });
+        this.at(a + 5.0, 'plead', () => this.sub(t('cine.who.you'), t('cine.s.plead'), 2));
         this.at(a + 1.4, 'flash1', () => { this.flash(); this.mug1 = this.capture(true); });
         this.at(a + 2.1, 'turn', () => { D.face(D.x - 5, D.z); this.sub(clerk, t('cine.s.side'), 1.1); });
         this.at(a + 3.2, 'flash2', () => { this.flash(); this.mug2 = this.capture(true); });
         this.at(a + 4.0, 'toCell', () => {
           D.dropPlacard();
+          D.sob = 1;
+          this.dragging = true;
           this.sub(who, t('cine.s.cell'), 1.4);
           S1.setPose('escort');
           S1.follow = { fig: D, side: -0.42, back: 0.4 };
           S2.setPose('stand');
           S2.go([S.p(-1.0, -1.1), S.p(0.8, -1.5), S.p(2.7, -1.5), S.p(4.0, -1.7)], 1.3, () => { S2.face(S.seat.x, S.seat.z); S2.setPose('reach'); });
-          D.go([S.p(-1.2, -1.9), S.p(0.8, -1.9), S.p(2.7, -1.9), S.p(4.1, -2.1), S.seat], 1.35, () => {
+          D.go([S.p(-1.2, -1.9), S.p(0.8, -1.9), S.p(2.7, -1.9), S.p(4.1, -2.1), S.seat], 1.1, () => {
             this.cellAt = this.bt;
             D.face(D.x - 5, D.z);
             D.setPose('sit');
@@ -1081,13 +1091,14 @@
       }
       if (this.cellAt != null) {
         const c = this.cellAt;
-        this.at(c + 0.7, 'cuffPrep', () => { S1.setPose('cuff'); D.removeCuffs(); });
+        this.at(c + 0.7, 'cuffPrep', () => { S1.setPose('cuff'); D.removeCuffs(); this.sub(who, t('cine.s.calm'), 1.6); });
         this.at(c + 1.0, 'arm', () => D.setPose('sitCuffed'));
         this.at(c + 1.7, 'toPole', () => {
           const w = D.wristPos('R', new T.Vector3());
           D.cuffTo(new T.Vector3(S.pole.x, w.y, S.pole.z));
           g.audio.cuffs && g.audio.cuffs();
           this.big(t('cine.s.pole'), 'bad');
+          this.dragging = false;
         });
         this.at(c + 2.5, 'leave', () => {
           S1.setPose('stand');
