@@ -227,7 +227,7 @@
       aero: { cdA: 0.62, clA: 0.25 },
       exhaust: [[0.32, -0.2, -2.12], [-0.32, -0.2, -2.12]],
       glb: {
-        hi: 'models/porsche_hi.glb', lo: 'models/porsche_lo.glb',
+        hi: 'models/porsche_hi.gltf.json', lo: 'models/porsche_lo.gltf.json',
         paint: '^paint$', lights: '^(lights|tex_shiny)$', lightsSplit: true,
         eye: [0.37, 1.08, -0.25],
         credit: { title: '(FREE) Porsche 911 Carrera 4S', author: 'Karol Miklas', license: 'CC BY-SA 4.0', url: 'https://sketchfab.com/3d-models/free-porsche-911-carrera-4s-d01b254483794de3819786d93e0e1ebf' },
@@ -279,7 +279,7 @@
       aero: { cdA: 0.68, clA: 1.1 },
       exhaust: [[0, -0.05, -2.16]],
       glb: {
-        hi: 'models/ferrari_hi.glb', lo: 'models/ferrari_lo.glb',
+        hi: 'models/ferrari_hi.gltf.json', lo: 'models/ferrari_lo.gltf.json',
         paint: '^Body$', lights: '^(red_light|break_lights\\.001|tail_lights)$',
         eye: [0.33, 0.95, 0.12],
         credit: { title: 'Ferrari LaFerrari | www.vecarz.com', author: 'vecarz', license: 'CC BY-NC-SA 4.0', url: 'https://sketchfab.com/3d-models/ferrari-laferrari-wwwvecarzcom-979f7085012e4d6399f38de3f9c39012' },
@@ -330,7 +330,7 @@
       aero: { cdA: 0.75, clA: 2.6 },
       exhaust: [[0, 0.24, -2.28]],
       glb: {
-        hi: 'models/bugatti_hi.glb', lo: 'models/bugatti_lo.glb',
+        hi: 'models/bugatti_hi.gltf.json', lo: 'models/bugatti_lo.gltf.json',
         paint: 'Paint_Material', lights: 'LightA_Material', lightsSplit: true,
         eye: [0.32, 0.86, 0.18],
         credit: { title: '2020 Bugatti Bolide Concept', author: 'Ddiaz Design', license: 'CC BY-NC-SA 4.0', url: 'https://sketchfab.com/3d-models/2020-bugatti-bolide-concept-658684653b154ffba72d5f9511312ca8' },
@@ -383,7 +383,7 @@
       aero: { cdA: 0.8, clA: 3.0 },
       exhaust: [[0.35, -0.15, -2.36], [-0.35, -0.15, -2.36]],
       glb: {
-        hi: 'models/clk_hi.glb', lo: 'models/clk_lo.glb',
+        hi: 'models/clk_hi.gltf.json', lo: 'models/clk_lo.gltf.json',
         paint: '^Material$', lights: null,
         eye: [0.3, 0.95, 0.08],
         credit: { title: '1998 Mercedes-Benz CLK LM', author: 'OUTPISTON', license: 'CC BY-NC-SA 4.0', url: 'https://sketchfab.com/3d-models/1998-mercedes-benz-clk-lm-6748dd7c61824ddfa9065b351d683f8e' },
