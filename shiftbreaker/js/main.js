@@ -222,6 +222,8 @@
         const inRace = this.mode && (this.mode.kind === 'race' || this.mode.kind === 'drag');
         const enabled = s.explosionRule && (!inRace || (ro.explosion != null ? ro.explosion : s.explosionInRace));
         o.explosion = { enabled, thr61: s.explodeAnySpeed ? 0 : s.thr61, thr6R: s.explodeAnySpeed ? 0 : s.thr6R };
+        // a race gearbox can switch the clutch mode: rebuild the touch controls so the clutch pedal matches
+        if (this.input && this.input.touchRoot && this.input.touchClutch !== !o.autoClutch) this.input.buildTouch(this.input.touchRoot);
       }
       if (this.renderer) {
         const sh = this.quality !== 'low';
@@ -259,6 +261,7 @@
       this.hud.big(t('free.welcome'), t('free.welcomeSub', { key: this.keyLabel('ignition') }), 4);
     }
     leaveMode() {
+      this.goHintT = null;
       if (this.mode && this.mode.dispose) this.mode.dispose();
       this.mode = null;
       this.lockPlayer = null;
@@ -664,6 +667,11 @@
       if (this.startHintT != null && (this.startHintT -= dt) <= 0) {
         this.startHintT = null;
         if (d.running && d.state === 'N' && Math.abs(p.speed) < 1) { this.hud.big(t('coach.started.t'), this.coachHint('started'), 4); this.coachShown = true; }
+      }
+      // race start: still in neutral a moment after the lights went green
+      if (this.goHintT != null && (this.goHintT -= dt) <= 0) {
+        this.goHintT = null;
+        if (d.running && d.state === 'N' && Math.abs(p.speed) < 1 && !d.opts.autoShift) { this.hud.big(t('coach.neutral.t'), this.coachHint('neutral'), 3, 'warn'); this.coachShown = true; this.coachCd = 3; }
       }
       // the hint goes away as soon as the car pulls away
       if (this.coachShown && Math.abs(p.speed) > 1.5) { this.coachShown = false; this.hud.clearBig(); }

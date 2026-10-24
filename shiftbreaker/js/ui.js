@@ -693,7 +693,8 @@
       if (g.state === 'play') g.state = 'pause';
       const events = SB.RACES.filter((e) => (filter ? e.type === filter : true));
       let sel = events.find((e) => e.id === preselect) || events[0];
-      const opts = this.lobbyOpts || { ai: g.settings.aiLevel, gearbox: 'clutch', rivals: null, explosion: g.settings.explosionInRace, rubber: true, laps: null };
+      // gearbox follows the clutch setting: manual gears with the automatic clutch unless the manual clutch is chosen
+      const opts = this.lobbyOpts || { ai: g.settings.aiLevel, gearbox: g.settings.clutchMode === 'manual' ? 'clutch' : 'manual', rivals: null, explosion: g.settings.explosionInRace, rubber: true, laps: null };
       this.lobbyOpts = opts;
       const { p, body, foot } = this.panel(t('lobby.title'), t('lobby.sub'));
       p.classList.add('wide');

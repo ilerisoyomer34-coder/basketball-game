@@ -402,7 +402,10 @@
       };
       pedal('gas', t9('touch.gas'), 'gas');
       pedal('brake', t9('touch.brake'), 'brake');
-      if (s.clutchMode === 'manual') pedal('clutch', t9('touch.clutch'), 'clutch');
+      // the clutch pedal appears whenever the car is driven with the manual clutch (setting or race gearbox)
+      const pc = this.game.player;
+      this.touchClutch = pc ? !pc.dt.opts.autoClutch : s.clutchMode === 'manual';
+      if (this.touchClutch) pedal('clutch', t9('touch.clutch'), 'clutch');
       // shifter
       const car = this.game.player;
       const seq = s.shifter === 'SEQ' || (car && car.car.gearbox === 'sequential');

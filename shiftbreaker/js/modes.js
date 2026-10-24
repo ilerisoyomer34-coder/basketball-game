@@ -758,7 +758,7 @@
         g.hud.show('raceLights', true);
         g.hud.setHTML('raceLights', [0, 1, 2].map((i) => `<i class="${go ? 'go' : i < on ? 'on' : ''}"></i>`).join(''));
         if (on !== prevOn && !go) g.audio.beep(660, 0.15, 0.15);
-        if (go) { g.audio.beep(1320, 0.4, 0.2); g.hud.big(t('race.go'), '', 1, 'good'); setTimeout(() => g.hud.show('raceLights', false), 900); this.t = 0; }
+        if (go) { g.audio.beep(1320, 0.4, 0.2); g.hud.big(t('race.go'), '', 1, 'good'); setTimeout(() => g.hud.show('raceLights', false), 900); this.t = 0; g.goHintT = 1.4; }
         else { g.lockPlayer = 'hold'; for (const r of this.rivals) r.place(); this.renderPanel(); return; }
       }
       g.lockPlayer = null;
