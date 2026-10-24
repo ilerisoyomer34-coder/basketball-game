@@ -53,6 +53,8 @@
     kneelDown: { y: -0.45, hipL: [0.05, 0, 0], hipR: [0.05, 0, 0], knL: [1.6, 0, 0], knR: [1.6, 0, 0], shL: [0, 0, 1.42], elL: [0, 0, 1.75], shR: [0, 0, -1.42], elR: [0, 0, -1.75] },
     // lying face down (with lie()), arms stretched past the head
     proneArms: { neck: [-0.5, 0, 0], shL: [-2.85, 0, 0.3], elL: [-0.1, 0, 0], shR: [-2.85, 0, -0.3], elR: [-0.1, 0, 0] },
+    // patting someone down who lies face down
+    frisk: { y: -0.45, chest: [0.7, 0, 0], neck: [0.35, 0, 0], hipL: [-1.5, 0, 0], knL: [1.5, 0, 0], hipR: [0.05, 0, 0], knR: [1.6, 0, 0], shL: [-0.85, -0.2, 0], elL: [-0.2, 0, 0], shR: [-0.85, 0.2, 0], elR: [-0.2, 0, 0] },
     // baton raised, then the swing (the scene cuts to black before it lands)
     strikeUp: { chest: [0, -0.25, 0], shR: [-2.75, 0.25, 0], elR: [-0.6, 0, 0], shL: [-0.6, -0.3, 0], elL: [-0.4, 0, 0] },
     strikeDown: { chest: [0.45, 0.1, 0], neck: [0.3, 0, 0], shR: [-0.7, 0.3, 0], elR: [-0.15, 0, 0], shL: [-0.5, -0.3, 0], elL: [-0.4, 0, 0] },
@@ -143,6 +145,10 @@
         this.batonBelt = add(J.hips, batonG, black, 0.19, -0.1, -0.04);
         this.baton = add(J.handR, batonG, black, 0, -0.3, 0.02);
         this.baton.visible = false;
+        // a wad of banknotes found in a search
+        this.cash = add(J.handL, geo('cash', () => new T.BoxGeometry(0.075, 0.03, 0.16)), mat(0x5f9a5b, { roughness: 0.9 }), 0, -0.08, 0.03);
+        add(this.cash, geo('cashBand', () => new T.BoxGeometry(0.078, 0.032, 0.03)), mat(0xe8dcc0), 0, 0, 0);
+        this.cash.visible = false;
         const pad = (this.pad = add(J.handL, geo('pad', () => new T.BoxGeometry(0.11, 0.15, 0.015)), mat(0xf2efe6), 0, -0.07, 0.03));
         pad.rotation.x = 0.4;
         pad.visible = false;
@@ -295,6 +301,13 @@
       const J = this.j, w = this.walkAmt, s = Math.sin(this.walkPh), cs = Math.cos(this.walkPh);
       for (const n of JOINTS) J[n].rotation.set(this.cur[n].x, this.cur[n].y, this.cur[n].z);
       if (this.lookSide) J.neck.rotation.y += this.lookSide;
+      // frisking: hands working along the back and legs
+      if (this.pose === 'frisk') {
+        const q = (this.frPh = (this.frPh || 0) + dt);
+        J.shL.rotation.x += Math.sin(q * 9) * 0.25;
+        J.shR.rotation.x += Math.sin(q * 9 + 1.6) * 0.25;
+        J.chest.rotation.y += Math.sin(q * 1.6) * 0.2;
+      }
       // crying: head down, shoulders heaving
       if (this.sob > 0.01) {
         const q = (this.sobPh = (this.sobPh || 0) + dt), w = this.sob, h = Math.sin(q * 8.5);

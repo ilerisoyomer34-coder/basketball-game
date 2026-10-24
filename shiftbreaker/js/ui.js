@@ -878,7 +878,7 @@
       const { p, body, foot } = this.panel(t('bust.title'), t('bust.sub'));
       p.classList.add('bust');
       const s = Math.floor(r.chase);
-      const total = r.fine + r.impound + (r.resist || 0);
+      const total = r.fine + r.impound + (r.resist || 0) + (r.seized || 0);
       const photo = r.mugs ? `<div class="bust-mugs">${r.mugs.filter(Boolean).map((m) => `<img alt="" src="${m}">`).join('')}</div>` : r.photo ? `<img alt="" src="${r.photo}">` : '';
       const rows = [
         [t('bust.chase'), Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')],
@@ -887,6 +887,7 @@
         [t('bust.bounty'), '−' + U.fmtInt(r.bounty) + ' ' + t('ui.cr')],
         [t('bust.fine'), '−' + U.fmtInt(r.fine) + ' ' + t('ui.cr')],
         ...(r.resist ? [[t('bust.resist'), '−' + U.fmtInt(r.resist) + ' ' + t('ui.cr')]] : []),
+        ...(r.seized ? [[t('bust.seized'), '−' + U.fmtInt(r.seized) + ' ' + t('ui.cr')]] : []),
         [t('bust.impound'), '−' + U.fmtInt(r.impound) + ' ' + t('ui.cr')],
         [t('bust.points'), '−' + r.points],
       ];

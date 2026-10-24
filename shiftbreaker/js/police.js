@@ -496,6 +496,15 @@
       g.updateTouchVisibility();
     }
     skipScene() { if (this.scene) this.scene.input(); }
+    // the officer at the window wants a search: the ticket becomes an arrest
+    convertToArrest(sc) {
+      const A = sc.A;
+      sc.dispose(false);
+      this.scene = null;
+      this.peak = Math.max(this.peak, 2);
+      this.stars = Math.max(this.stars, 2);
+      this.begin('arrest', A);
+    }
     // called by the scene when it is over
     endScene(kind, info) {
       const g = this.game, E = SB.DATA.ECONOMY;
@@ -557,13 +566,15 @@
       // arrest: the report over the scene, then the pound
       const fine = E.fines.busted + 600 * Math.max(0, this.peak - 2);
       const resist = sc.resisted ? E.fines.resist : 0;
-      const rep = { photo: info.photo, mugs: info.mugs, resist, chase: this.chaseT, stars: this.peak, takedowns: this.takedowns, bounty: Math.round(this.bounty / 10) * 10, fine, impound: E.fines.impound, points: 20 };
+      const seized = sc.found || 0;
+      const rep = { photo: info.photo, mugs: info.mugs, resist, seized, chase: this.chaseT, stars: this.peak, takedowns: this.takedowns, bounty: Math.round(this.bounty / 10) * 10, fine, impound: E.fines.impound, points: 20 };
       g.save.stats.busted = (g.save.stats.busted || 0) + 1;
       rep.bail = E.bailPerStar * Math.max(2, this.peak);
       const release = (paid) => {
         this.scene = null;
         this.fine(fine + E.fines.impound + resist, 'busted', 20);
         if (paid) g.addCredits(-rep.bail);
+        if (seized) g.addCredits(-seized);
         sc.dispose(true);
         this.reset();
         const p = g.player;
@@ -694,6 +705,10 @@
       this.D.place(this.seat.x, this.seat.z, this.yaw);
       this.D.setPose('sit', true);
       this.figs.push(this.D);
+      // cash found in the search: a share of what the driver carries
+      const cr = Math.max(0, g.save.credits);
+      this.cash = Math.round(U.clamp(cr * 0.35, Math.min(cr, 2500), 25000) / 100) * 100;
+      this.searchCase = kind === 'ticket' && cr >= 15000 && Math.random() < 0.4;
       g.sirenLevel = 0.05;
       this.dom = document.getElementById('cine');
       this.dom.hidden = false;
@@ -838,6 +853,11 @@
       if (this.arrived == null) { if (this.bt > 14) this.finishTicket(); return; }
       const a = this.arrived;
       this.at(a + 0.2, 'hello', () => { this.sub(t('cine.who.officer'), t('cine.t.hello'), 2); this.D.j.neck.rotation.y = 0; this.D.lookSide = this.s * 0.9; });
+      if (this.searchCase) {
+        this.at(a + 1.7, 'search', () => { O.setPose('aimLow'); this.sub(t('cine.who.officer'), t('cine.t.search'), 1.6, true); });
+        this.at(a + 2.6, 'convert', () => this.police.convertToArrest(this));
+        return;
+      }
       this.at(a + 1.7, 'write', () => {
         O.setPose('write');
         const why = this.police.lastCrime && t('cine.crime.' + this.police.lastCrime) !== 'cine.crime.' + this.police.lastCrime ? t('cine.crime.' + this.police.lastCrime) : t('cine.crime.traffic');
@@ -885,9 +905,19 @@
       this.at(6.75, 'cuffR', () => { D.putCuffs('R'); g.audio.cuffs && g.audio.cuffs(); this.big(t('cine.cuffed'), 'bad'); });
       this.at(7.0, 'photo', () => (this.photo = this.capture()));
       this.at(6.95, 'tight', () => this.sub(t('cine.who.you'), t('cine.a.tight'), 1.0));
-      this.at(7.6, 'rights', () => this.sub(who, t('cine.a.rights'), 2.0));
-      this.at(8.1, 'up', () => { O2.setPose('stand'); D.lie(false); D.setPose('handsBehind'); this.sub(who, t('cine.a.up2'), 1.2, true); });
-      this.at(8.9, 'walk', () => {
+      this.at(7.4, 'frisk', () => { O2.setPose('frisk'); this.sub(t('cine.who.officer2'), t('cine.a.frisk'), 1.2, true); });
+      this.at(8.0, 'no2', () => { D.wiggle = 0.6; this.sub(t('cine.who.you'), t('cine.a.okay'), 0.9, true); });
+      this.at(8.9, 'cash', () => {
+        O2.setPose('kneel');
+        O2.cash.visible = true;
+        this.found = this.cash;
+        this.big(t('cine.a.cashBig', { n: U.fmtInt(this.cash) }), 'bad');
+        this.sub(t('cine.who.officer2'), t('cine.a.cash'), 1.6, true);
+        g.audio.fail();
+      });
+      this.at(9.9, 'rights', () => { O2.cash.visible = false; this.sub(who, t('cine.a.rights'), 2.0); });
+      this.at(10.5, 'up', () => { O2.setPose('stand'); D.lie(false); D.setPose('handsBehind'); this.sub(who, t('cine.a.up2'), 1.2, true); });
+      this.at(11.3, 'walk', () => {
         const A = this.A, cl = cruiserLeft(A);
         const sd = Math.sign((D.x - A.x) * cl.x + (D.z - A.z) * cl.z) || 1;
         const rd = off(A, cl, sd * 1.15, P2(A.tx, A.tz), -0.55);
@@ -895,14 +925,14 @@
         O2.setPose('escort');
         O2.follow = { fig: D, side: -0.42, back: 0.38 };
       });
-      this.at(9.2, 'o1back', () => { O1.setPose('stand'); O1.go(this.route(O1, this.home(O1)), 1.4, (f) => f.show(false)); });
-      if (O3) this.at(9.4, 'o3back', () => { O3.setPose('stand'); O3.go(this.route(O3, this.home(O3)), 1.4, (f) => f.show(false)); });
+      this.at(11.6, 'o1back', () => { O1.setPose('stand'); O1.go(this.route(O1, this.home(O1)), 1.4, (f) => f.show(false)); });
+      if (O3) this.at(11.8, 'o3back', () => { O3.setPose('stand'); O3.go(this.route(O3, this.home(O3)), 1.4, (f) => f.show(false)); });
       if (this.inAt != null) {
         this.at(this.inAt + 0.55, 'in', () => { D.show(false); O2.follow = null; O2.setPose('stand'); g.audio.thud(0.25); });
         this.at(this.inAt + 0.8, 'radio', () => this.sub(t('cine.who.radio'), t('cine.a.radio'), 2.2));
         this.at(this.inAt + 2.6, 'toStation', () => this.toStation());
       }
-      if (this.bt > 21) this.toStation();
+      if (this.bt > 24) this.toStation();
     }
     // ---------------------------------------------------------------- resisting on the ground
     startStruggle() {
@@ -1139,7 +1169,7 @@
       if (this.reportShot) return 'orbit';
       if ((this.struggle && !this.struggle.done) || this.koAt != null) return 'cuffs';
       if (this.freeAt != null) return 'wide';
-      return this.bt < 2.9 ? 'shoulder' : this.bt < 5.9 ? 'wide' : this.bt < 8.0 ? 'cuffs' : 'orbit';
+      return this.bt < 2.9 ? 'shoulder' : this.bt < 5.9 ? 'wide' : this.bt < 10.4 ? 'cuffs' : 'orbit';
     }
     camera(cam, rdt) {
       const g = this.game, W = g.world;
