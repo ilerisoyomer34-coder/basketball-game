@@ -393,7 +393,7 @@
       if (a === 'horn') { p.horn = down; return; }
       if (!down) return;
       // police scene: any control skips ahead
-      if (this.state === 'arrest') { if (a !== 'debug' && a !== 'console') this.police.skipScene(); return; }
+      if (this.state === 'arrest') { if (a !== 'debug' && a !== 'console') this.police.skipScene(a); return; }
       switch (a) {
         case 'pause': if (this.state === 'play') this.pause(); else this.resume(); break;
         case 'camera': this.camMode = (this.camMode + 1) % this.camModes.length; this.hud.toast(t('cam.' + this.camModes[this.camMode]), 'info', 1); break;

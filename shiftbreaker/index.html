@@ -119,6 +119,12 @@
   @keyframes cineBig { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.4); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
   #cineSkip { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(11vh - 40px); pointer-events: auto; font: 700 14px/1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 8px 12px; cursor: pointer; }
   #cineFade { position: absolute; inset: 0; background: #000; opacity: 0; }
+  .cine.night #cineSub { bottom: calc(11vh + 72px); }
+  #cineNight .cn-clock { position: absolute; top: calc(11vh + 14px); left: 50%; transform: translateX(-50%); font: 700 clamp(18px, 2.6vw, 26px)/1 var(--mono); color: #fff; background: rgba(0,0,0,0.55); padding: 8px 14px; border-radius: 6px; letter-spacing: 0.04em; }
+  #cineNight .cn-acts { position: absolute; left: 50%; bottom: calc(11vh + 14px); transform: translateX(-50%); display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; pointer-events: auto; }
+  #cineNight button { font: 700 15px/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: #fff; background: rgba(20,22,26,0.85); border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 10px 14px; cursor: pointer; touch-action: manipulation; }
+  #cineNight .cn-pay { border-color: #e5482d; }
+  #cineNight button:disabled { opacity: 0.45; cursor: default; }
   #cineStruggle { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); width: min(420px, 80vw); pointer-events: auto; display: grid; gap: 8px; padding: 14px 18px 12px; background: rgba(20,8,6,0.78); border: 2px solid #ff4b3a; border-radius: 10px; color: #fff; cursor: pointer; animation: chPulse 0.35s ease-in-out infinite alternate; touch-action: manipulation; }
   #cineStruggle[hidden] { display: none; }
   #cineStruggle span { font: 800 clamp(18px, 3vw, 26px)/1.1 var(--display); letter-spacing: 0.05em; text-transform: uppercase; }
@@ -458,6 +464,7 @@
   <div id="cineBig"></div>
   <div id="cineSub"></div>
   <button id="cineStruggle" type="button" hidden><span></span><div class="cs-bar"><i></i></div><b></b></button>
+  <div id="cineNight" hidden><div class="cn-clock"></div><div class="cn-acts"><button class="cn-wc" type="button"></button><button class="cn-pay" type="button"></button></div></div>
   <button id="cineSkip" type="button"></button>
   <div id="cineFade"></div>
 </div>

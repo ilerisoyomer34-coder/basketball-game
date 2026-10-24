@@ -62,6 +62,8 @@
     // baton raised, then the swing (the scene cuts to black before it lands)
     strikeUp: { chest: [0, -0.25, 0], shR: [-2.75, 0.25, 0], elR: [-0.6, 0, 0], shL: [-0.6, -0.3, 0], elL: [-0.4, 0, 0] },
     strikeDown: { chest: [0.45, 0.1, 0], neck: [0.3, 0, 0], shR: [-0.7, 0.3, 0], elR: [-0.15, 0, 0], shL: [-0.5, -0.3, 0], elL: [-0.4, 0, 0] },
+    // on the bench, both hands cuffed behind to the pole at the back
+    sitBehind: { y: -0.42, chest: [0.04, 0, 0], neck: [0.1, 0, 0], hipL: [-1.35, 0, 0], hipR: [-1.35, 0, 0], knL: [1.45, 0, 0], knR: [1.45, 0, 0], shL: [0.8, 0, -0.08], elL: [0, 0, -1.25], shR: [0.8, 0, 0.08], elR: [0, 0, 1.25] },
     sitCuffed: { y: -0.42, chest: [0.12, 0.1, 0], neck: [0.1, 0.15, 0], hipL: [-1.35, 0, 0], hipR: [-1.35, 0, 0], knL: [1.45, 0, 0], knR: [1.45, 0, 0], shL: [-0.45, 0, 0.1], elL: [-0.7, 0, 0], shR: [0.35, 0, -0.75], elR: [-0.35, 0, 0] },
     sit: { y: -0.42, chest: [0.32, 0, 0], neck: [-0.15, 0, 0], hipL: [-1.35, 0, 0], hipR: [-1.35, 0, 0], knL: [1.45, 0, 0], knR: [1.45, 0, 0], shL: [-0.5, 0, 0.1], shR: [-0.5, 0, -0.1], elL: [-0.6, 0, 0], elR: [-0.6, 0, 0] },
   };
@@ -222,19 +224,28 @@
       if (!c) return;
       c.L.visible = c.R.visible = c.on = false;
       c.chain.visible = c.fixed.visible = false;
+      if (c.chain2) c.chain2.visible = false;
       c.anchor = null;
+      c.both = false;
     }
-    // right wrist cuffed to a fixed point (a ring round a pole at p)
-    cuffTo(p) {
-      this.putCuffs('R');
+    // right wrist cuffed to a fixed point (a ring round a pole at p); both: both wrists behind to it
+    cuffTo(p, both) {
+      this.putCuffs(both ? 'both' : 'R');
       const c = this.cuffs;
-      c.L.visible = false;
+      c.L.visible = !!both;
+      c.both = !!both;
+      if (both && !c.chain2) { c.chain2 = c.chain.clone(); this.game.scene.add(c.chain2); }
       c.anchor = p.clone();
       c.fixed.position.copy(p);
       c.fixed.visible = true;
       c.on = true;
     }
-    show(on) { this.vis = on; this.root.visible = on; if (this.cuffs) { this.cuffs.chain.visible = on && this.cuffs.on; this.cuffs.fixed.visible = on && !!this.cuffs.anchor; } }
+    show(on) {
+      this.vis = on;
+      this.root.visible = on;
+      const c = this.cuffs;
+      if (c) { c.chain.visible = on && c.on; c.fixed.visible = on && !!c.anchor; if (c.chain2) c.chain2.visible = on && c.on && c.both; }
+    }
     putCuffs(side) {
       if (!this.cuffs) {
         const steel = mat(0xc9ced4, { metalness: 0.95, roughness: 0.22 });
@@ -312,6 +323,11 @@
         J.shR.rotation.x += Math.sin(q * 9 + 1.6) * 0.25;
         J.chest.rotation.y += Math.sin(q * 1.6) * 0.2;
       }
+      // dozing: head drops forward
+      if (this.doze > 0.01) {
+        J.neck.rotation.x += 0.65 * this.doze;
+        J.chest.rotation.x += 0.08 * this.doze;
+      }
       // crying: head down, shoulders heaving
       if (this.sob > 0.01) {
         const q = (this.sobPh = (this.sobPh || 0) + dt), w = this.sob, h = Math.sin(q * 8.5);
@@ -348,10 +364,9 @@
       const c = this.cuffs;
       if (c && c.on) {
         const a = c.anchor ? _a.copy(c.anchor) : this.wristPos('L', _a), b = this.wristPos('R', _b);
-        c.chain.position.copy(a);
-        c.chain.lookAt(b);
-        c.chain.scale.set(1, 1, Math.max(0.02, a.distanceTo(b)));
-        c.chain.visible = true;
+        const lay = (ch, p, q) => { ch.position.copy(p); ch.lookAt(q); ch.scale.set(1, 1, Math.max(0.02, p.distanceTo(q))); ch.visible = true; };
+        lay(c.chain, a, b);
+        if (c.both && c.chain2) lay(c.chain2, a, this.wristPos('L', _b));
       }
     }
     sync(bob) {
@@ -363,7 +378,7 @@
     }
     dispose() {
       this.game.scene.remove(this.root);
-      if (this.cuffs) this.game.scene.remove(this.cuffs.chain, this.cuffs.fixed);
+      if (this.cuffs) { this.game.scene.remove(this.cuffs.chain, this.cuffs.fixed); if (this.cuffs.chain2) this.game.scene.remove(this.cuffs.chain2); }
     }
   }
   const _a = new T.Vector3(), _b = new T.Vector3();
