@@ -255,7 +255,7 @@
         slider('ffb', t('set.ffb'), 0, 1, 0.05, pct, t('set.ffb.h'));
         row(t('set.wheel'), this.btn(esc(t('set.wheel.b')), () => this.calibrateWheel(() => this.settings('controls', back))), t('set.wheel.h'));
         choice('touch', t('set.touch'), [['auto', 'ui.auto'], ['on', 'ui.on'], ['off', 'ui.off']]);
-        choice('touchSteer', t('set.touchSteer'), [['slider', 'set.ts.slider'], ['buttons', 'set.ts.buttons'], ['tilt', 'set.ts.tilt']], t('set.touchSteer.h'), () => { if (g.input.touchRoot) g.input.buildTouch(g.input.touchRoot); });
+        choice('touchSteer', t('set.touchSteer'), [['wheel', 'set.ts.wheel'], ['slider', 'set.ts.slider'], ['buttons', 'set.ts.buttons'], ['tilt', 'set.ts.tilt']], t('set.touchSteer.h'), () => { if (g.input.touchRoot) g.input.buildTouch(g.input.touchRoot); });
         slider('touchOpacity', t('set.touchOpacity'), 0.2, 1, 0.05, pct, null, () => g.input.touchRoot && g.input.applyTouchLayout());
         slider('gyroSens', t('set.gyro'), 0.4, 2, 0.05, pct);
         row(t('set.layout'), this.btn(esc(t('set.layout.b')), () => this.touchEditor()));

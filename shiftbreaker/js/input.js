@@ -6,6 +6,29 @@
   const U = SB.U;
 
   const GEAR_ACTIONS = { gR: -1, gN: 0, g1: 1, g2: 2, g3: 3, g4: 4, g5: 5, g6: 6 };
+  // ---------------------------------------------------------------- touch control artwork
+  const ribs = (n, x, y0, w, step, h) => Array.from({ length: n }, (_, i) => `<rect class="pp-rib" x="${x}" y="${y0 + i * step}" width="${w}" height="${h}" rx="${h / 2}"/>`).join('');
+  const PEDAL_SVG = {
+    // floor-hinged organ pedal
+    gas: '<svg viewBox="0 0 60 130" aria-hidden="true"><rect class="pp-plate" x="3" y="3" width="54" height="120" rx="11"/>' + ribs(9, 13, 14, 34, 12, 5) + '<rect class="pp-glow" x="3" y="3" width="54" height="120" rx="11"/><rect class="pp-hinge" x="12" y="119" width="36" height="9" rx="4"/></svg>',
+    // hanging pedals: arm from the top
+    brake: '<svg viewBox="0 0 90 86" aria-hidden="true"><rect class="pp-arm" x="38" y="0" width="14" height="22" rx="3"/><rect class="pp-plate" x="3" y="16" width="84" height="66" rx="13"/>' + ribs(5, 14, 26, 62, 11, 5) + '<rect class="pp-glow" x="3" y="16" width="84" height="66" rx="13"/></svg>',
+  };
+  PEDAL_SVG.clutch = PEDAL_SVG.brake;
+  const WHEEL_SVG = '<svg viewBox="-100 -100 200 200" aria-hidden="true">' +
+    '<circle class="tw-rim" r="82"/>' +
+    '<path class="tw-grip" d="M-74 -36 A82 82 0 0 1 -36 -74"/><path class="tw-grip" d="M36 -74 A82 82 0 0 1 74 -36"/>' +
+    '<circle class="tw-edge" r="91"/><circle class="tw-edge" r="73"/>' +
+    '<path class="tw-spoke" d="M-75 4 L-30 -2 L-22 22 L22 22 L30 -2 L75 4 L75 -12 L28 -16 L-28 -16 L-75 -12 Z"/>' +
+    '<path class="tw-spoke" d="M-14 22 L14 22 L10 76 L-10 76 Z"/>' +
+    '<circle class="tw-hub" r="26"/><text class="tw-logo" y="5">SB</text>' +
+    '<rect class="tw-mark" x="-6" y="-99" width="12" height="18" rx="3"/></svg>';
+  const LEVER_SVG = '<svg viewBox="0 0 110 150" aria-hidden="true"><g class="lv-arm"><rect class="lv-shaft" x="14" y="30" width="14" height="96" rx="7"/>' +
+    '<rect class="lv-grip" x="10" y="12" width="22" height="58" rx="11"/>' + [24, 34, 44, 54].map((y) => `<rect class="lv-rib" x="14" y="${y}" width="14" height="3" rx="1.5"/>`).join('') +
+    '<circle class="lv-btn" cx="21" cy="10" r="7"/></g>' +
+    '<path class="lv-boot" d="M4 146 L10 118 Q12 110 22 110 L44 110 Q54 110 56 118 L62 146 Z"/></svg>';
+  const STEER_MAX_DEG = 120; // wheel rotation at full lock
+
   const PREVENT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'AltLeft', 'AltRight', 'F3', 'Tab', 'ShiftLeft']);
 
   class Input {
@@ -154,7 +177,10 @@
           steerT = (t.left ? 1 : 0) - (t.right ? 1 : 0);
           st.steer += U.clamp(steerT - st.steer, -3.2 * dt, 3.2 * dt);
         } else if (s.touchSteer === 'tilt' && this.tilt != null) st.steer = U.clamp(-this.tilt * s.gyroSens, -1, 1);
-        else st.steer = t.steer;
+        else {
+          if (s.touchSteer === 'wheel' && !t.wheelDrag) t.steer -= U.clamp(t.steer, -6 * dt, 6 * dt);
+          st.steer = t.steer;
+        }
         st.throttle = t.gas;
         st.brake = t.brake;
         st.clutch = t.clutch;
@@ -298,7 +324,42 @@
       const t = this.touch;
       const t9 = SB.i18n.t;
       // steering
-      if (s.touchSteer === 'buttons') {
+      this.wheelRot = null;
+      if (s.touchSteer === 'wheel') {
+        // turn the wheel with a finger: the angle swept around its centre steers, it re-centres on release
+        const box = el('wheel', 'tc-wheel', '<div class="tc-wrot">' + WHEEL_SVG + '</div>');
+        const rot = box.firstChild;
+        this.wheelRot = rot;
+        let pid = null, aPrev = 0, cur = 0;
+        const polar = (e) => {
+          const r = box.getBoundingClientRect();
+          const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+          return { a: (Math.atan2(dy, dx) * 180) / Math.PI, d: Math.hypot(dx, dy) / (r.width / 2) };
+        };
+        box.addEventListener('pointerdown', (e) => {
+          pid = e.pointerId;
+          box.setPointerCapture(pid);
+          this.setDevice('touch');
+          t.wheelDrag = true;
+          aPrev = polar(e).a;
+          cur = -t.steer * STEER_MAX_DEG;
+        });
+        box.addEventListener('pointermove', (e) => {
+          if (e.pointerId !== pid) return;
+          const q = polar(e);
+          if (q.d > 0.22) {
+            let d = q.a - aPrev;
+            if (d > 180) d -= 360;
+            if (d < -180) d += 360;
+            cur = U.clamp(cur + d, -STEER_MAX_DEG, STEER_MAX_DEG);
+          }
+          aPrev = q.a;
+          t.steer = -cur / STEER_MAX_DEG;
+        });
+        const up = (e) => { if (e.pointerId !== pid) return; pid = null; t.wheelDrag = false; };
+        box.addEventListener('pointerup', up);
+        box.addEventListener('pointercancel', up);
+      } else if (s.touchSteer === 'buttons') {
         const L = el('steerL', 'tc-btn tc-steer', '◀');
         const R = el('steerR', 'tc-btn tc-steer', '▶');
         this.hold(L, (v) => (t.left = v));
@@ -322,19 +383,20 @@
         this.enableTilt();
       }
       // pedals
+      // pedals: press anywhere; the higher up the plate, the deeper the pedal goes
+      this.pedalViews = [];
       const pedal = (id, label, key) => {
-        const p = el(id, 'tc-pedal tc-' + id, '<div class="tc-fill"></div><span>' + label + '</span>');
-        const fill = p.firstChild;
+        const p = el(id, 'tc-pedal tc-' + id, '<div class="pp">' + PEDAL_SVG[id] + '</div><span>' + label + '</span>');
+        this.pedalViews.push({ key, hinge: id === 'gas' ? 1 : -1, pp: p.firstChild, glow: p.querySelector('.pp-glow') });
         let pid = null;
         const setv = (e) => {
           const r = p.getBoundingClientRect();
           const v = U.clamp((r.bottom - e.clientY) / r.height, 0, 1);
           t[key] = 0.3 + v * 0.7;
-          fill.style.height = t[key] * 100 + '%';
         };
         p.addEventListener('pointerdown', (e) => { pid = e.pointerId; p.setPointerCapture(pid); this.setDevice('touch'); setv(e); });
         p.addEventListener('pointermove', (e) => { if (e.pointerId === pid) setv(e); });
-        const up = (e) => { if (e.pointerId !== pid) return; pid = null; t[key] = 0; fill.style.height = '0%'; };
+        const up = (e) => { if (e.pointerId !== pid) return; pid = null; t[key] = 0; };
         p.addEventListener('pointerup', up);
         p.addEventListener('pointercancel', up);
       };
@@ -350,19 +412,21 @@
         up.addEventListener('pointerdown', () => { this.setDevice('touch'); car && car.dt.shiftUp(false); });
         dn.addEventListener('pointerdown', () => { this.setDevice('touch'); car && car.dt.shiftDown(false); });
       } else this.buildHWidget(el('hshift', 'tc-hshift', '<canvas width="300" height="240"></canvas>'));
-      // handbrake lever (slide down to pull)
-      const hb = el('hand', 'tc-lever', '<div class="tc-lknob"></div><span>' + t9('touch.hand') + '</span>');
+      // handbrake lever: drag up to pull, down to release, tap to toggle; it shows the real state
+      const hb = el('hand', 'tc-lever', LEVER_SVG + '<span>' + t9('touch.hand') + '</span>');
+      this.leverView = { box: hb, arm: hb.querySelector('.lv-arm'), a: 45 };
       {
-        const knob = hb.firstChild;
-        let pid = null;
-        const setv = (e) => {
-          const r = hb.getBoundingClientRect();
-          t.hand = U.clamp((e.clientY - r.top) / r.height, 0, 1) > 0.5 ? 1 : 0;
-          knob.style.top = t.hand ? '72%' : '8%';
-        };
-        hb.addEventListener('pointerdown', (e) => { pid = e.pointerId; hb.setPointerCapture(pid); setv(e); });
-        hb.addEventListener('pointermove', (e) => { if (e.pointerId === pid) setv(e); });
-        hb.addEventListener('pointerup', () => { pid = null; });
+        let pid = null, y0 = 0, moved = false;
+        hb.addEventListener('pointerdown', (e) => { pid = e.pointerId; hb.setPointerCapture(pid); this.setDevice('touch'); y0 = e.clientY; moved = false; });
+        hb.addEventListener('pointermove', (e) => {
+          if (e.pointerId !== pid) return;
+          const dy = e.clientY - y0;
+          if (dy < -12) { t.hand = 1; moved = true; y0 = e.clientY; }
+          else if (dy > 12) { t.hand = 0; moved = true; y0 = e.clientY; }
+        });
+        const up = (e) => { if (e.pointerId !== pid) return; pid = null; if (!moved) t.hand = t.hand ? 0 : 1; };
+        hb.addEventListener('pointerup', up);
+        hb.addEventListener('pointercancel', () => { pid = null; });
       }
       // buttons
       const btn = (id, label, onDown, onUp) => {
@@ -492,8 +556,23 @@
       cv.addEventListener('pointercancel', end);
     }
     updateTouchWidget() {
+      if (!this.touchRoot || this.touchRoot.hidden) return;
+      const car = this.game.player, t = this.touch;
+      if (this.wheelRot) this.wheelRot.style.transform = `rotate(${(-t.steer * STEER_MAX_DEG).toFixed(1)}deg)`;
+      for (const v of this.pedalViews || []) {
+        const x = t[v.key] || 0;
+        v.pp.style.transform = `perspective(260px) rotateX(${(v.hinge * x * 30).toFixed(1)}deg) translateY(${(x * 4).toFixed(1)}px)`;
+        v.glow.style.opacity = (x * 0.6).toFixed(2);
+      }
+      if (this.leverView && car) {
+        // follows the brake actually applied (also the automatic parking brake while the engine is off)
+        const L = this.leverView, on = car.input.handbrake > 0.5;
+        L.a += ((on ? 8 : 45) - L.a) * 0.35;
+        L.arm.setAttribute('transform', `rotate(${L.a.toFixed(1)} 21 122)`);
+        L.box.classList.toggle('on', on);
+      }
       const st = this.hw;
-      if (!st || !this.touchRoot || this.touchRoot.hidden) return;
+      if (!st) return;
       const dt = this.game.player && this.game.player.dt;
       if (dt && !st.drag) { st.kx = dt.lever.x; st.ky = Math.abs(dt.lever.y) > 0.95 ? Math.sign(dt.lever.y) : dt.lever.y; st.req = dt.leverGear(); }
       if (dt && dt.state === 'GRIND' && st.drag && Math.random() < 0.25) this.rumble(0.4, 0.03);

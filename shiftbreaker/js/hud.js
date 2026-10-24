@@ -449,13 +449,20 @@
       if (s.hud.damage) this.drawDamage(car);
       if (s.hud.map) this.drawMinimap(car);
       // pedals
+      // driver controls: steering wheel, handbrake lever, clutch / brake / throttle pedals
       if (s.hud.pedals) {
         const inp = car.input;
-        $('pThr').style.height = Math.round(inp.throttle * 100) + '%';
-        $('pBrk').style.height = Math.round(Math.max(inp.brake, inp.handbrake) * 100) + '%';
-        $('pClu').style.height = Math.round(dt.clutchPedal * 100) + '%';
-        const bite = 1 - car.car.clutch.bite;
-        $('pBite').style.bottom = Math.round(bite * 100) + '%';
+        $('hWheel').setAttribute('transform', `translate(31 34) rotate(${(-inp.steer * 120).toFixed(1)})`);
+        this.hbA = U.lerp(this.hbA == null ? 52 : this.hbA, inp.handbrake > 0.5 ? 12 : 52, 0.3);
+        $('hLever').setAttribute('transform', `rotate(${this.hbA.toFixed(1)} 73 62)`);
+        $('pedals').classList.toggle('hb-on', inp.handbrake > 0.5);
+        for (const [id, v] of [['hpC', dt.clutchPedal], ['hpB', inp.brake], ['hpG', inp.throttle]]) {
+          const g = $(id);
+          g.setAttribute('transform', `translate(0 ${(v * 9).toFixed(1)})`);
+          g.lastChild.style.opacity = (v * 0.75).toFixed(2);
+        }
+        // bite point: where the top of the clutch plate sits when the clutch starts to grab
+        $('pBite').setAttribute('transform', `translate(0 ${((1 - car.car.clutch.bite) * 9 - 8).toFixed(1)})`);
       }
       // gauges
       const fuelF = U.clamp(dt.fuel / car.car.fuelTank, 0, 1);

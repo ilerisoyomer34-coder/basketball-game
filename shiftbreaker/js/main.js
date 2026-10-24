@@ -20,6 +20,8 @@
       const stored = U.store.get(SET_KEY, {});
       // rev 2: automatic clutch and traction control became the defaults for every device
       if (!(stored.rev >= 2)) { delete stored.clutchMode; delete stored.tcs; }
+      // rev 3: the steering wheel became the default touch steering
+      if (!(stored.rev >= 3)) delete stored.touchSteer;
       this.settings = U.deepMerge(U.clone(SB.DATA.SETTINGS_DEFAULT), stored);
       this.settings.rev = SB.DATA.SETTINGS_DEFAULT.rev;
       this.save = U.deepMerge(defaultSave(), U.store.get(SAVE_KEY, {}));

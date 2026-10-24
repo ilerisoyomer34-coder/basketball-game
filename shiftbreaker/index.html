@@ -54,11 +54,16 @@
   #leds i { width: 15px; height: 7px; border-radius: 2px; background: rgba(255,255,255,0.08); }
   #suggest { position: absolute; right: 22px; top: 92px; font-size: 20px; color: var(--amber); font-family: var(--mono); }
   .row { display: flex; gap: 8px; align-items: flex-end; }
-  #pedals { display: flex; gap: 5px; height: 76px; padding: 6px; background: rgba(12,13,17,0.7); border-radius: 6px; }
-  #pedals > div { position: relative; width: 11px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: visible; }
-  #pedals > div > i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 2px; }
-  #pThr { background: var(--good); } #pBrk { background: var(--bad); } #pClu { background: var(--blue); }
-  #pBite { position: absolute; left: -3px; right: -3px; height: 2px; background: var(--amber); }
+  #pedals { width: 150px; height: 72px; padding: 3px 4px; background: rgba(12,13,17,0.7); border-radius: 6px; }
+  #pedals svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .hw-rim { fill: none; stroke: #2c2f36; stroke-width: 6; } .hw-rim2 { fill: none; stroke: rgba(255,255,255,0.14); stroke-width: 1; }
+  .hw-spoke { fill: #40444d; } .hw-hub { fill: #1b1d22; stroke: var(--red); stroke-width: 1.5; } .hw-mark { fill: var(--amber); }
+  .hl-boot { fill: #191b1f; } .hl-shaft { fill: #4c515a; } .hl-grip { fill: #22252b; stroke: #5a5f68; stroke-width: 1; } .hl-btn { fill: #b9bec4; }
+  #pedals.hb-on .hl-grip { stroke: var(--amber); stroke-width: 1.6; }
+  .hp-arm { fill: #3a3e46; } .hp-pl { fill: #2d3037; stroke: #50555e; stroke-width: 1; } .hp-rib { fill: #17191d; }
+  .hp-gl { opacity: 0; } .hp-c { fill: var(--blue); } .hp-b { fill: var(--bad); } .hp-g { fill: var(--good); }
+  .hp-bite { fill: var(--amber); }
+  .hp-t { fill: var(--ink2); font: 700 8px var(--mono); text-anchor: middle; }
   .gauges { display: grid; gap: 4px; width: 150px; padding: 6px 8px; background: rgba(12,13,17,0.7); border-radius: 6px; font-size: 12px; color: var(--ink2); letter-spacing: 0.05em; text-transform: uppercase; }
   .gauge { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 6px; }
   .gauge div { height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
@@ -139,20 +144,34 @@
   .tc[data-id="steerL"] { left: max(2vw, env(safe-area-inset-left, 0px)); }
   .tc[data-id="steerR"] { left: calc(max(2vw, env(safe-area-inset-left, 0px)) + 16vw); }
   .tc-info { left: 3vw; bottom: 6vh; color: var(--ink2); }
-  .tc-pedal { bottom: max(3vh, env(safe-area-inset-bottom, 0px)); width: 10vw; min-width: 60px; border-radius: 12px; background: rgba(12,13,17,0.45); border: 1px solid var(--line); overflow: hidden; }
-  .tc-pedal .tc-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0%; }
-  .tc-pedal span { position: relative; z-index: 1; }
-  .tc-gas { right: max(2vw, env(safe-area-inset-right, 0px)); height: 32vh; } .tc-gas .tc-fill { background: rgba(63,212,122,0.55); }
-  .tc-brake { right: calc(max(2vw, env(safe-area-inset-right, 0px)) + 11.5vw); height: 26vh; } .tc-brake .tc-fill { background: rgba(229,72,45,0.55); }
-  .tc-clutch { left: max(2vw, env(safe-area-inset-left, 0px)); bottom: calc(max(3vh, env(safe-area-inset-bottom, 0px)) + 29vh) !important; height: 24vh; } .tc-clutch .tc-fill { background: rgba(92,225,255,0.5); }
+  .tc-wheel { left: max(2vw, env(safe-area-inset-left, 0px)); bottom: max(2vh, env(safe-area-inset-bottom, 0px)); width: min(46vh, 27vw); height: min(46vh, 27vw); border-radius: 50%; }
+  .tc-wrot { width: 100%; height: 100%; will-change: transform; }
+  .tc-wheel svg { display: block; width: 100%; height: 100%; filter: drop-shadow(0 5px 12px rgba(0,0,0,0.5)); }
+  .tw-rim { fill: none; stroke: #23262c; stroke-width: 17; } .tw-grip { fill: none; stroke: #2f333a; stroke-width: 19; stroke-linecap: round; }
+  .tw-edge { fill: none; stroke: rgba(255,255,255,0.16); stroke-width: 1.5; } .tw-spoke { fill: #3d414a; stroke: #4c515b; stroke-width: 1; }
+  .tw-hub { fill: #1a1c21; stroke: #4c515b; stroke-width: 2; } .tw-logo { fill: var(--red); font: 800 15px var(--display); text-anchor: middle; letter-spacing: 0.04em; }
+  .tw-mark { fill: var(--amber); }
+  .tc-pedal { bottom: max(3vh, env(safe-area-inset-bottom, 0px)); width: 10vw; min-width: 60px; overflow: visible; }
+  .tc-pedal .pp { position: absolute; inset: 0; transform-origin: 50% 100%; }
+  .tc-brake .pp, .tc-clutch .pp { transform-origin: 50% 0%; }
+  .tc-pedal svg { display: block; width: 100%; height: 100%; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)); }
+  .pp-plate { fill: #2b2e34; stroke: #565b64; stroke-width: 2; } .pp-rib { fill: #141619; } .pp-arm { fill: #3a3e46; } .pp-hinge { fill: #50555e; }
+  .pp-glow { opacity: 0; } .tc-gas .pp-glow { fill: var(--good); } .tc-brake .pp-glow { fill: var(--bad); } .tc-clutch .pp-glow { fill: var(--blue); }
+  .tc-pedal span { position: absolute; left: 0; right: 0; bottom: -18px; text-align: center; font-size: 12px; color: var(--ink); text-shadow: 0 1px 3px #000; }
+  .tc-gas { right: max(2vw, env(safe-area-inset-right, 0px)); height: 30vh; bottom: calc(max(3vh, env(safe-area-inset-bottom, 0px)) + 14px); }
+  .tc-brake { right: calc(max(2vw, env(safe-area-inset-right, 0px)) + 11.5vw); width: 12vw; height: 22vh; bottom: calc(max(3vh, env(safe-area-inset-bottom, 0px)) + 14px); }
+  .tc-clutch { right: calc(max(2vw, env(safe-area-inset-right, 0px)) + 25vw); width: 11vw; height: 22vh; bottom: calc(max(3vh, env(safe-area-inset-bottom, 0px)) + 14px); }
   .tc-hshift { left: 41vw; bottom: max(2vh, env(safe-area-inset-bottom, 0px)); width: min(19vw, 210px); }
   .tc-hshift canvas { width: 100%; height: auto; border-radius: 12px; display: block; }
   .tc-seq { left: 43vw; width: 12vw; height: 13vh; font-size: 40px; }
   .tc[data-id="seqUp"] { bottom: calc(max(3vh, env(safe-area-inset-bottom, 0px)) + 15vh); }
   .tc[data-id="seqDn"] { bottom: max(3vh, env(safe-area-inset-bottom, 0px)); }
-  .tc-lever { left: calc(max(2vw, env(safe-area-inset-left, 0px)) + 31.5vw); bottom: max(3vh, env(safe-area-inset-bottom, 0px)); width: 6.5vw; min-width: 44px; height: 24vh; border-radius: 12px; background: rgba(12,13,17,0.45); border: 1px solid var(--line); }
-  .tc-lknob { position: absolute; left: 12%; right: 12%; top: 8%; height: 20%; border-radius: 8px; background: var(--amber); transition: top 0.12s; }
-  .tc-lever span { position: absolute; bottom: 4px; font-size: 10px; color: var(--ink2); }
+  .tc-lever { left: calc(max(2vw, env(safe-area-inset-left, 0px)) + min(46vh, 27vw) + 1.5vw); bottom: calc(max(3vh, env(safe-area-inset-bottom, 0px)) + 14px); width: 10vw; min-width: 56px; height: 30vh; }
+  .tc-lever svg { display: block; width: 100%; height: 100%; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)); }
+  .lv-boot { fill: #17191d; stroke: #3c4048; stroke-width: 2; } .lv-shaft { fill: #4c515a; } .lv-grip { fill: #23262c; stroke: #5a5f68; stroke-width: 2; }
+  .lv-rib { fill: #15171a; } .lv-btn { fill: #b9bec4; }
+  .tc-lever.on .lv-grip { stroke: var(--amber); stroke-width: 3; }
+  .tc-lever span { position: absolute; left: -10px; right: -10px; bottom: -18px; text-align: center; font-size: 11px; color: var(--ink); text-shadow: 0 1px 3px #000; }
   .tc-small { width: 46px; height: 40px; font-size: 16px; top: max(8px, env(safe-area-inset-top, 0px)); }
   .tc[data-id="ign"] { width: 21vw; max-width: 170px; height: 44px; right: max(2vw, env(safe-area-inset-right, 0px)); top: auto; bottom: calc(max(3vh, env(safe-area-inset-bottom, 0px)) + 34vh); background: rgba(229,72,45,0.4); font-size: 16px; }
   .tc[data-id="pause"] { right: max(1vw, env(safe-area-inset-right, 0px)); }
@@ -336,7 +355,16 @@
     <div class="hud-side">
       <canvas id="pattern" width="96" height="76"></canvas>
       <div class="row">
-        <div id="pedals"><div><i id="pClu"></i><b id="pBite"></b></div><div><i id="pBrk"></i></div><div><i id="pThr"></i></div></div>
+        <div id="pedals"><svg viewBox="0 0 150 72" aria-hidden="true">
+          <g id="hWheel" transform="translate(31 34)"><circle class="hw-rim" r="26"/><circle class="hw-rim2" r="29"/><path class="hw-spoke" d="M-25 1 L-10 0 L-7 8 L7 8 L10 0 L25 1 L25 -3 L10 -5 L-10 -5 L-25 -3 Z"/><path class="hw-spoke" d="M-5 8 L5 8 L3 25 L-3 25 Z"/><circle class="hw-hub" r="8"/><rect class="hw-mark" x="-2.5" y="-30" width="5" height="8" rx="1.5"/></g>
+          <path class="hl-boot" d="M62 70 L65 58 Q66 55 69 55 L77 55 Q80 55 81 58 L84 70 Z"/>
+          <g id="hLever" transform="rotate(52 73 62)"><rect class="hl-shaft" x="70" y="24" width="6" height="40" rx="3"/><rect class="hl-grip" x="68.5" y="18" width="9" height="22" rx="4.5"/><circle class="hl-btn" cx="73" cy="17" r="2.6"/></g>
+          <path class="hp-bite" id="pBite" d="M88 20 L92 22 L88 24 Z"/>
+          <g id="hpC"><rect class="hp-arm" x="99" y="0" width="4" height="16"/><rect class="hp-pl" x="93" y="14" width="16" height="24" rx="3"/><rect class="hp-rib" x="96" y="19" width="10" height="2"/><rect class="hp-rib" x="96" y="25" width="10" height="2"/><rect class="hp-rib" x="96" y="31" width="10" height="2"/><rect class="hp-gl hp-c" x="93" y="14" width="16" height="24" rx="3"/></g>
+          <g id="hpB"><rect class="hp-arm" x="118" y="0" width="4" height="16"/><rect class="hp-pl" x="111" y="14" width="18" height="24" rx="3"/><rect class="hp-rib" x="114" y="19" width="12" height="2"/><rect class="hp-rib" x="114" y="25" width="12" height="2"/><rect class="hp-rib" x="114" y="31" width="12" height="2"/><rect class="hp-gl hp-b" x="111" y="14" width="18" height="24" rx="3"/></g>
+          <g id="hpG"><rect class="hp-pl" x="133" y="8" width="13" height="46" rx="3"/><rect class="hp-rib" x="135.5" y="13" width="8" height="2"/><rect class="hp-rib" x="135.5" y="19" width="8" height="2"/><rect class="hp-rib" x="135.5" y="25" width="8" height="2"/><rect class="hp-rib" x="135.5" y="31" width="8" height="2"/><rect class="hp-rib" x="135.5" y="37" width="8" height="2"/><rect class="hp-rib" x="135.5" y="43" width="8" height="2"/><rect class="hp-gl hp-g" x="133" y="8" width="13" height="46" rx="3"/></g>
+          <text class="hp-t" x="101" y="70" data-i18n="hud.ped.c"></text><text class="hp-t" x="120" y="70" data-i18n="hud.ped.b"></text><text class="hp-t" x="139.5" y="70" data-i18n="hud.ped.g"></text>
+        </svg></div>
       </div>
       <div class="gauges">
         <div class="gauge"><span data-i18n="hud.fuel"></span><div><i id="gFuel"></i></div></div>

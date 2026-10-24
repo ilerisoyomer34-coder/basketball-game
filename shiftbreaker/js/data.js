@@ -308,7 +308,7 @@
 
   // ---------------------------------------------------------------- settings
   D.SETTINGS_DEFAULT = {
-    rev: 2, // bump to migrate stored settings (see Game constructor)
+    rev: 3, // bump to migrate stored settings (see Game constructor)
     lang: 'tr',
     units: 'kmh',
     shifter: 'H',
@@ -340,7 +340,7 @@
     timeFixed: false,
     weather: 'dynamic',
     touch: 'auto',
-    touchSteer: 'slider',
+    touchSteer: 'wheel',
     touchOpacity: 0.85,
     steerSens: 1,
     deadzone: 0.08,
