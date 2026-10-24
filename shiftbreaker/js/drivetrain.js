@@ -44,6 +44,14 @@
     },
     // Linearise the tyre's reaction torque on the wheel: T(ω') ≈ T0 − k (ω' − ω)
     linearize(w) {
+      if (w.parts) {
+        // composite wheel (AWD side): parts turn together, their tyre torques and stiffnesses add up
+        let T0 = 0, k = 0;
+        for (const p of w.parts) { p.omega = w.omega; Tire.linearize(p); T0 += p.T0; k += p.k; }
+        w.T0 = T0;
+        w.k = k;
+        return;
+      }
       const o = Tire._t;
       Tire.forces(w, w.omega, o);
       const fx0 = o.fx;

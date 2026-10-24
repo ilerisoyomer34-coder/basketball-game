@@ -62,6 +62,12 @@
         });
       }
       this.driven = this.wheels.filter((w) => w.driven);
+      // AWD: the drivetrain drives one wheel pair, so each side's front and rear wheel are joined into one
+      // composite wheel (locked centre coupling); Tire.linearize sums the parts' tyre torques
+      if (car.drive === 'AWD') {
+        const side = (f, r) => ({ parts: [f, r], omega: 0, I: f.I + r.I, R, Tb: 0, T0: 0, k: 0 });
+        this.awd = [side(this.wheels[0], this.wheels[2]), side(this.wheels[1], this.wheels[3])];
+      }
       this.damage = { body: 0, steering: 0, headL: false, headR: false, susp: [0, 0, 0, 0], tires: [0, 0, 0, 0], dents: 0 };
       this.tcsF = 1;
       this.hillHold = 0;
@@ -83,7 +89,16 @@
       for (const w of this.visual.wheels) w.steer.position.z += this.zShift;
       for (const k of ['enginePos', 'cockpitEye', 'hoodEye', 'bumperEye']) this.visual[k].z += this.zShift;
       for (const e of this.visual.exhaust) e.z += this.zShift;
+      this.visual.zShift = this.zShift;
       game.scene.add(this.root);
+      // real cars: the detailed GLB replaces the procedural shell as soon as it is loaded
+      if (car.glb && T.GLTFLoader) {
+        SB.CarModel.loadGLB(car.glb.hi).then((sc) => {
+          if (this.disposed) return;
+          SB.CarModel.applyGLB(this.visual, sc, car, { color: this.look.color, finish: this.look.finish, defaultColor: SB.DATA.CARS[car.id].color });
+          if (this.charred) this.setCharred(this.charred);
+        }).catch((e) => console.warn('car model failed to load, keeping the procedural body', e));
+      }
       // headlight beam
       this.beam = new T.SpotLight(0xfff1d8, 0, 70, 0.55, 0.45, 1.4);
       this.beam.position.set(0, 0.2, this.a + 0.8);
@@ -94,8 +109,10 @@
     }
 
     dispose() {
+      this.disposed = true;
       this.game.scene.remove(this.root);
-      this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+      // GLB geometry is shared with the model cache; only the procedural parts belong to this car
+      this.root.traverse((o) => { if (o.geometry && !o.userData.shared) o.geometry.dispose(); });
     }
 
     place(x, z, heading, yOff) {
@@ -252,7 +269,11 @@
       dt.input.clutch = inp.clutch;
       dt.input.tcs = this.tcsF;
       for (const w of this.wheels) if (!w.contact) { w.Fz = 0; }
-      dt.step(h, this.driven[0], this.driven[1], fwdSpeed);
+      if (this.awd) {
+        for (const c of this.awd) { c.omega = (c.parts[0].omega + c.parts[1].omega) / 2; c.Tb = c.parts[0].Tb + c.parts[1].Tb; }
+        dt.step(h, this.awd[0], this.awd[1], fwdSpeed);
+        for (const c of this.awd) c.parts[0].omega = c.parts[1].omega = c.omega;
+      } else dt.step(h, this.driven[0], this.driven[1], fwdSpeed);
       for (const w of this.wheels) {
         if (w.driven) continue;
         SB.Tire.linearize(w);
@@ -547,8 +568,14 @@
       m.indR.emissiveIntensity = (this.ind === 1 || this.ind === 2) && blink ? 2 : 0;
       const headOn = this.lightsMode > 0 && on && (dt.running || dt.cranking || true);
       m.head.emissiveIntensity = headOn ? (this.lightsMode === 2 ? 2.6 : 1.6) : 0.05;
-      v.heads[0].visible = !this.damage.headL;
-      v.heads[1].visible = !this.damage.headR;
+      if (m.glbTail) {
+        for (const g of m.glbTail) g.emissiveIntensity = m.tail.emissiveIntensity * 0.8;
+        for (const g of m.glbHead) g.emissiveIntensity = m.head.emissiveIntensity > 0.1 ? m.head.emissiveIntensity * 0.7 : 0;
+      }
+      if (!v.glb) {
+        v.heads[0].visible = !this.damage.headL;
+        v.heads[1].visible = !this.damage.headR;
+      }
       const workingHeads = (this.damage.headL ? 0 : 1) + (this.damage.headR ? 0 : 1);
       this.beam.intensity = headOn ? (this.lightsMode === 2 ? 2.6 : 1.5) * (workingHeads / 2) : 0;
       this.beam.distance = this.lightsMode === 2 ? 120 : 65;

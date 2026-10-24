@@ -97,7 +97,7 @@
       // current car card
       const id = g.save.current, car = SB.DATA.CARS[id];
       const card = this.el('div', 'carcard');
-      card.innerHTML = `<div class="cc-make">${esc(car.make)}</div><div class="cc-name">${esc(car.name)}</div>${this.carSpecs(id)}`;
+      card.innerHTML = `<div class="cc-make" lang="en">${esc(car.make)}</div><div class="cc-name" lang="en">${esc(car.name)}</div>${this.carSpecs(id)}`;
       card.prepend(this.silhouette(id, 260, 90));
       wrap.appendChild(card);
       wrap.appendChild(this.el('div', 'menu-note', esc(t('menu.note'))));
@@ -107,7 +107,12 @@
       const c = this.game.makeCarData(id);
       const pp = SB.DATA.performancePoints(c, c.tune);
       const kw = Math.round((c.engine.maxTorque * (1 + c.tune.power) * c.engine.redline * 0.88 * 2 * Math.PI) / 60 / 1000);
-      return `<div class="specs"><div><b>${esc(c.cls)}</b><span>${pp} PP</span></div><div><b>${esc(c.drive)}</b><span>${esc(t('car.drive'))}</span></div><div><b>${esc(t('gb.' + c.gearbox))}</b><span>${esc(t('car.gearbox'))}</span></div><div><b>${kw} kW</b><span>${esc(c.engine.type)}</span></div><div><b>${U.fmtInt(c.mass)} kg</b><span>${esc(t('car.mass'))}</span></div><div><b>${(c.engine.redline / 1000).toFixed(1)}k</b><span>${esc(t('car.redline'))}</span></div></div>`;
+      return `<div class="specs"><div><b>${esc(c.cls)}</b><span>${pp} PP</span></div><div><b>${esc(c.drive)}</b><span>${esc(t('car.drive'))}</span></div><div><b>${esc(t('gb.' + c.gearbox))}</b><span>${esc(t('car.gearbox'))}</span></div><div><b>${kw} kW</b><span>${esc(c.engine.type)}</span></div><div><b>${U.fmtInt(c.mass)} kg</b><span>${esc(t('car.mass'))}</span></div><div><b>${(c.engine.redline / 1000).toFixed(1)}k</b><span>${esc(t('car.redline'))}</span></div></div>${c.glb ? this.carCredit(c.glb.credit) : ''}`;
+    }
+    // attribution for the Sketchfab models (CC BY / BY-SA / BY-NC-SA): title, author, licence, source
+    carCredit(cr) {
+      const link = `<a href="${esc(cr.url)}" target="_blank" rel="noopener">${esc(cr.title)}</a>`;
+      return `<div class="credit">${t('car.credit', { title: link, author: esc(cr.author), license: esc(cr.license) })}</div>`;
     }
     silhouette(id, w, h) {
       const c = document.createElement('canvas');
@@ -384,7 +389,7 @@
         else if (sc.repairUntil > now) status = `<span class="pill warn">${esc(t('garage.inRepair', { h: Math.ceil(sc.repairUntil - now) }))}</span>`;
         else status = `<span class="pill good">${esc(t('garage.ready'))}</span>`;
         if (sc.insured) status += `<span class="pill">${esc(t('garage.insured'))}</span>`;
-        c.appendChild(this.el('div', 'car-h', `<div class="cc-make">${esc(car.make)}</div><div class="cc-name">${esc(car.name)}</div>${status}`));
+        c.appendChild(this.el('div', 'car-h', `<div class="cc-make" lang="en">${esc(car.make)}</div><div class="cc-name" lang="en">${esc(car.name)}</div>${status}`));
         c.appendChild(this.el('div', '', this.carSpecs(id)));
         const acts = this.el('div', 'acts');
         if (sc.owned && !sc.lost) {
@@ -442,7 +447,7 @@
         const car = SB.DATA.CARS[id], sc = S.cars[id];
         const c = this.el('div', 'car');
         c.appendChild(this.silhouette(id, 220, 74));
-        c.appendChild(this.el('div', 'car-h', `<div class="cc-make">${esc(car.make)}</div><div class="cc-name">${esc(car.name)}</div>`));
+        c.appendChild(this.el('div', 'car-h', `<div class="cc-make" lang="en">${esc(car.make)}</div><div class="cc-name" lang="en">${esc(car.name)}</div>`));
         c.appendChild(this.el('div', '', this.carSpecs(id)));
         const acts = this.el('div', 'acts');
         const used = Math.round(car.price * (1 - SB.DATA.ECONOMY.usedDiscount));

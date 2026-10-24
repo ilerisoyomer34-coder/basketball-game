@@ -426,5 +426,216 @@
     return moved;
   }
 
-  SB.CarModel = { buildPlayer, buildSimple, dent, PROFILES, paintMaterial };
+  // ------------------------------------------------------------------ real car models (GLB)
+  // Assets are pre-baked by tools/prep-car.mjs: +Z forward, +X left, ground at y = 0, mid-wheelbase
+  // at z = 0, nodes "body" and "wheel_FL/FR/RL/RR" whose origin is the hub. They replace the procedural
+  // body and wheels inside the usual model skeleton, so physics, lights and effects keep working.
+  const glbCache = new Map();
+  const glbMats = new Set(); // every GLB material, for environment reflections that follow the time of day
+  let envMap = null, envScale = 1;
+  function loadGLB(url) {
+    if (!glbCache.has(url)) {
+      glbCache.set(url, new Promise((resolve, reject) => {
+        if (!T.GLTFLoader) return reject(new Error('GLTFLoader missing'));
+        const L = new T.GLTFLoader();
+        if (window.MeshoptDecoder) L.setMeshoptDecoder(window.MeshoptDecoder);
+        L.load(url, (g) => resolve(g.scene), undefined, reject);
+      }));
+    }
+    return glbCache.get(url);
+  }
+  // soft studio-sky environment for car paint reflections (cars look flat black without one)
+  function initEnv(renderer) {
+    const pm = new T.PMREMGenerator(renderer);
+    const sc = new T.Scene();
+    // gradient sky as vertex colours (a custom ShaderMaterial renders black inside the PMREM pass on r128)
+    const skyGeo = new T.SphereGeometry(50, 32, 16);
+    const sp = skyGeo.attributes.position, col = new Float32Array(sp.count * 3);
+    const top = new T.Color(0.62, 0.72, 0.85), hor = new T.Color(0.9, 0.88, 0.84), gnd = new T.Color(0.16, 0.15, 0.14), c = new T.Color();
+    for (let i = 0; i < sp.count; i++) {
+      const h = sp.getY(i) / 50;
+      if (h > 0) c.copy(hor).lerp(top, Math.pow(h, 0.6)); else c.copy(hor).lerp(gnd, Math.pow(-h, 0.4));
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    skyGeo.setAttribute('color', new T.BufferAttribute(col, 3));
+    const sky = new T.Mesh(skyGeo, new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide }));
+    sc.add(sky);
+    for (const [x, y, z, w, h] of [[0, 30, 0, 40, 8], [30, 12, 10, 6, 14], [-30, 12, -10, 6, 14]]) {
+      const p = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ color: new T.Color(3, 3, 3), side: T.DoubleSide }));
+      p.position.set(x, y, z);
+      p.lookAt(0, 0, 0);
+      sc.add(p);
+    }
+    envMap = pm.fromScene(sc, 0.03).texture;
+    pm.dispose();
+    for (const m of glbMats) { m.envMap = envMap; m.needsUpdate = true; }
+  }
+  function setEnvIntensity(k) {
+    if (Math.abs(k - envScale) < 0.01) return;
+    envScale = k;
+    for (const m of glbMats) m.envMapIntensity = (m.userData.envBase || 1) * k;
+  }
+  const rx = (s) => (s ? new RegExp(s) : null);
+  // material copies for one car instance: glass gets simple alpha (no transmission pass), paint a clear coat
+  function prepareMaterial(src, cfg, look, cache) {
+    if (cache.has(src)) return cache.get(src);
+    let m;
+    const isPaint = rx(cfg.paint) && rx(cfg.paint).test(src.name);
+    if (isPaint) {
+      m = new T.MeshPhysicalMaterial();
+      T.MeshStandardMaterial.prototype.copy.call(m, src);
+      m.defines = { STANDARD: '', PHYSICAL: '' }; // Standard.copy drops the physical shader path
+      m.clearcoat = 1;
+      m.clearcoatRoughness = 0.05;
+      m.roughness = Math.min(m.roughness, 0.45);
+      const c = look && look.color;
+      if (c != null && c !== look.defaultColor) m.color.setHex(c);
+      if (look && look.finish === 'matte') { m.clearcoat = 0; m.roughness = 0.7; m.metalness = 0.1; }
+      else if (look && look.finish === 'metal') { m.metalness = 0.75; m.roughness = 0.32; }
+      else if (look && look.finish === 'chrome') { m.metalness = 1; m.roughness = 0.07; m.clearcoat = 0; }
+      m.userData.paint = true;
+    } else {
+      m = src.type === 'MeshPhysicalMaterial' ? new T.MeshStandardMaterial() : src.clone();
+      if (src.type === 'MeshPhysicalMaterial') T.MeshStandardMaterial.prototype.copy.call(m, src);
+    }
+    m.name = src.name;
+    if (m.transparent) { m.depthWrite = false; m.opacity = Math.min(m.opacity, 0.6); }
+    m.envMap = envMap;
+    m.userData.envBase = m.metalness > 0.5 ? 1.0 : 0.7;
+    m.envMapIntensity = m.userData.envBase * envScale;
+    glbMats.add(m);
+    cache.set(src, m);
+    return m;
+  }
+  // split a mesh that carries both head and tail lights in one material into front/rear halves
+  function splitByZ(mesh) {
+    const g = mesh.geometry;
+    const pos = g.attributes.position;
+    const idx = g.index ? g.index.array : null;
+    const n = idx ? idx.length : pos.count;
+    const front = [], rear = [];
+    // positions may be quantized: compare in car space (the node matrix holds the dequantization)
+    const e = mesh.matrixWorld.elements;
+    const zc = (i) => e[2] * pos.getX(i) + e[6] * pos.getY(i) + e[10] * pos.getZ(i) + e[14];
+    for (let t = 0; t < n; t += 3) {
+      const a = idx ? idx[t] : t, b = idx ? idx[t + 1] : t + 1, c = idx ? idx[t + 2] : t + 2;
+      const z = (zc(a) + zc(b) + zc(c)) / 3;
+      (z > 0 ? front : rear).push(a, b, c);
+    }
+    const make = (list) => { const gg = g.clone(); gg.setIndex(list); return gg; };
+    return { front: front.length ? make(front) : null, rear: rear.length ? make(rear) : null };
+  }
+  // wheel hub in model space: the centre of the wheel's bounds (the assets centre each wheel on its hub)
+  function hubOf(scene, node) {
+    scene.updateMatrixWorld(true);
+    return new T.Box3().setFromObject(node).getCenter(new T.Vector3());
+  }
+  // Put a loaded GLB scene into a procedural model (buildPlayer) for car `car`.
+  function applyGLB(model, scene, car, look) {
+    const cfg = car.glb, cg = car.cgHeight;
+    const cache = new Map();
+    // hide the procedural shell, keep the groups (lights, effects and physics refer to them)
+    for (const o of model.body.children) o.visible = false;
+    for (const w of model.wheels) { for (const o of w.spin.children) o.visible = false; w.disc.visible = false; }
+    model.interior.visible = false;
+    const lightRx = rx(cfg.lights);
+    const headMats = [], tailMats = [];
+    const shell = new T.Group();
+    shell.position.y = -cg;
+    model.body.add(shell);
+    const src = scene.getObjectByName('body');
+    src.updateMatrixWorld(true);
+    let paint = null;
+    src.traverse((o) => {
+      if (!o.isMesh) return;
+      const list = Array.isArray(o.material) ? o.material : [o.material];
+      for (const sm of list) {
+        if (lightRx && lightRx.test(sm.name)) {
+          // lamps: emissive copies of the model's lamp material, driven like the procedural ones
+          const parts = cfg.lightsSplit ? splitByZ(o) : { front: null, rear: o.geometry };
+          for (const [geo, role] of [[parts.front, 'head'], [parts.rear, 'tail']]) {
+            if (!geo) continue;
+            const m = prepareMaterial(sm, cfg, look, new Map());
+            m.emissive = new T.Color(role === 'head' ? 0xfff2d6 : 0xff1a1a);
+            m.emissiveIntensity = 0;
+            const mesh = new T.Mesh(geo, m);
+            mesh.applyMatrix4(o.matrixWorld);
+            shell.add(mesh);
+            (role === 'head' ? headMats : tailMats).push(m);
+          }
+          continue;
+        }
+        const m = prepareMaterial(sm, cfg, look, cache);
+        if (m.userData.paint) paint = m;
+        const mesh = new T.Mesh(o.geometry, m);
+        mesh.userData.shared = true; // geometry belongs to the model cache
+        mesh.applyMatrix4(o.matrixWorld);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        shell.add(mesh);
+      }
+    });
+    // wheels: the GLB wheel sits on the hub inside each procedural spin group
+    for (const w of model.wheels) {
+      const name = 'wheel_' + (w.front ? 'F' : 'R') + (w.x > 0 ? 'L' : 'R');
+      const node = scene.getObjectByName(name);
+      if (!node) continue;
+      const hub = hubOf(scene, node);
+      node.traverse((o) => {
+        if (!o.isMesh) return;
+        const mesh = new T.Mesh(o.geometry, prepareMaterial(o.material, cfg, look, cache));
+        // keep the node matrix (it carries the dequantization), re-centred on the hub
+        mesh.applyMatrix4(o.matrixWorld);
+        mesh.position.sub(hub);
+        mesh.castShadow = true;
+        mesh.userData.shared = true;
+        w.spin.add(mesh);
+      });
+    }
+    if (paint) model.mats.paint = paint;
+    model.mats.glbHead = headMats;
+    model.mats.glbTail = tailMats;
+    // camera eyes from the model's real proportions
+    const zs = model.zShift || 0;
+    const e = cfg.eye || [0.35, 1.0, 0];
+    model.cockpitEye.set(e[0], e[1] - cg, e[2] + zs);
+    model.hoodEye.set(0, e[1] - 0.12 - cg, e[2] + 0.9 + zs);
+    model.bumperEye.set(0, 0.42 - cg, car.dims.length / 2 - 0.15 + zs);
+    // the procedural glass/hood must stay hidden (explosion code toggles and throws them)
+    model.glassMesh = new T.Object3D();
+    model.hood = null;
+    model.glb = true;
+    return model;
+  }
+  // light model for rivals, ghosts and the drag opponent: one group, wheels spin via userData.wheels
+  function buildGLBSimple(scene, car, color, opts) {
+    const o = opts || {};
+    const cfg = car.glb;
+    const cache = new Map();
+    const root = new T.Group();
+    const look = { color, defaultColor: car.color };
+    const body = scene.getObjectByName('body').clone();
+    body.traverse((m) => { if (m.isMesh) m.material = o.material || prepareMaterial(m.material, cfg, look, cache); });
+    root.add(body);
+    const wheels = [];
+    for (const k of ['FL', 'FR', 'RL', 'RR']) {
+      const n = scene.getObjectByName('wheel_' + k);
+      if (!n) continue;
+      // spin around the hub: the clone keeps its node matrix inside a pivot placed on the hub
+      const hub = hubOf(scene, n);
+      const w = n.clone();
+      w.traverse((m) => { if (m.isMesh) m.material = o.material || prepareMaterial(m.material, cfg, look, cache); });
+      w.position.sub(hub);
+      const pivot = new T.Group();
+      pivot.position.copy(hub);
+      pivot.add(w);
+      root.add(pivot);
+      wheels.push(pivot);
+    }
+    root.userData.wheels = wheels;
+    root.userData.radius = car.wheel.radius;
+    return root;
+  }
+
+  SB.CarModel = { buildPlayer, buildSimple, dent, PROFILES, paintMaterial, loadGLB, applyGLB, buildGLBSimple, initEnv, setEnvIntensity };
 })();

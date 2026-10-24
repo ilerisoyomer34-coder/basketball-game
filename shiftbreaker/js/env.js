@@ -225,6 +225,7 @@
       const hs = lerp3(A.hs, B.hs, t, new T.Color()), hg = lerp3(A.hg, B.hg, t, new T.Color());
       const cloud = U.clamp((w.fog - 1) * 0.5 + w.rain * 0.4 + w.snow * 0.3, 0, 1);
       this.night = U.clamp((0.08 - el) / 0.2, 0, 1);
+      SB.CarModel.setEnvIntensity(U.lerp(1, 0.12, this.night) * (1 - (this.wet || 0) * 0.3));
       const si = U.lerp(A.si, B.si, t) * (1 - cloud * 0.65);
       const isMoon = el < -0.05;
       if (isMoon) this.sunDir.multiplyScalar(-1);

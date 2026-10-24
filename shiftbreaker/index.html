@@ -236,7 +236,7 @@
   .note.bad { color: #ffb3a4; }
   .warnbox { border: 1px solid var(--red); background: rgba(229,72,45,0.12); padding: 10px 12px; border-radius: 6px; font-size: 17px; line-height: 1.35; }
   .tips { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 18px; font-size: 16px; line-height: 1.5; }
-  .tips.how { grid-template-columns: 1fr; color: var(--ink); background: rgba(92,225,255,0.07); border-radius: 6px; padding: 10px 12px; }
+  .tips.how { display: block; color: var(--ink); background: rgba(92,225,255,0.07); border-radius: 6px; padding: 10px 12px; }
   .keylist { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 4px 18px; }
   .krow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid rgba(242,239,232,0.06); font-size: 16px; }
   .btn.key { font-family: var(--mono); font-size: 14px; padding: 5px 10px; min-width: 70px; text-align: center; }
@@ -250,6 +250,8 @@
   .pill { display: inline-block; margin: 6px 6px 0 0; font: 700 12px var(--display); letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 7px; border-radius: 4px; background: rgba(255,255,255,0.1); }
   .pill.good { background: rgba(63,212,122,0.2); color: var(--good); } .pill.warn { background: rgba(242,177,59,0.2); color: var(--warn); } .pill.bad { background: rgba(229,72,45,0.2); color: #ff8b76; }
   .specs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .credit { margin-top: 8px; font-size: 11px; line-height: 1.35; color: var(--ink2); }
+  .credit a { color: inherit; text-decoration: underline; }
   .car .specs, .carcard .specs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .specs div { background: rgba(0,0,0,0.25); border-radius: 5px; padding: 6px 8px; min-width: 0; }
   .specs b { display: block; font: 700 15px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -402,6 +404,9 @@
 <div id="loading"><div class="ld"><h1>SHIFT<span>BREAKER</span></h1><div class="bar"><i></i></div><div id="loadmsg">Kıyıkent</div></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- three.js r128 GLTFLoader and meshoptimizer decoder (MIT), bundled from the three@0.128.0 npm package -->
+<script src="js/vendor/GLTFLoader.js"></script>
+<script src="js/vendor/meshopt_decoder.js"></script>
 <script src="js/util.js"></script>
 <script src="js/data.js"></script>
 <script src="js/i18n.js"></script>

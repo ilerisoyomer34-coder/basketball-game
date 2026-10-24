@@ -175,6 +175,39 @@
     dispose() { this.scene.remove(this.group); }
   }
 
+  // ------------------------------------------------------------------ opponent bodies
+  // The simple procedural shape at once; for real cars it is swapped for the light GLB model when loaded.
+  function opponentModel(car, color, material) {
+    const grp = new T.Group();
+    const md = SB.CarModel.buildSimple(car.body === 'track' ? 'track' : car.body === 'coupe' ? 'coupe' : 'hatch');
+    const simple = new T.Mesh(md.geo, material || new T.MeshStandardMaterial({ vertexColors: true, color, roughness: 0.35, metalness: 0.3 }));
+    simple.castShadow = !material;
+    grp.add(simple);
+    grp.userData.geo = md.geo;
+    if (car.glb && T.GLTFLoader) {
+      SB.CarModel.loadGLB(car.glb.lo).then((sc) => {
+        if (grp.userData.disposed) return;
+        const m = SB.CarModel.buildGLBSimple(sc, car, color, { material });
+        m.traverse((o) => { if (o.isMesh) o.castShadow = !material; });
+        grp.remove(simple);
+        grp.add(m);
+        grp.userData.wheels = m.userData.wheels;
+      }).catch((e) => console.warn('opponent model kept simple:', e && e.message));
+    }
+    return { grp, len: md.len, wid: md.wid };
+  }
+  function disposeOpponent(scene, grp) {
+    grp.userData.disposed = true;
+    scene.remove(grp);
+    grp.userData.geo.dispose();
+  }
+  function spinWheels(grp, v, dt, R) {
+    const ws = grp.userData.wheels;
+    if (!ws) return;
+    const a = (v * dt) / (R || 0.33);
+    for (const w of ws) w.rotation.x += a;
+  }
+
   // ------------------------------------------------------------------ AI rival (simplified manual gearbox)
   class Rival {
     constructor(game, route, carId, level, name, color, lateral) {
@@ -196,9 +229,8 @@
       this.mistakeT = 0;
       this.shiftPoint = U.lerp(this.L.shiftLo, this.L.shiftHi, Math.random());
       this.profile = route.speedProfile(this.car.tire.mu * 0.92 * this.L.corner, 85);
-      const md = SB.CarModel.buildSimple(this.car.body === 'track' ? 'track' : this.car.body === 'coupe' ? 'coupe' : 'hatch');
-      this.mesh = new T.Mesh(md.geo, new T.MeshStandardMaterial({ vertexColors: true, color, roughness: 0.35, metalness: 0.3 }));
-      this.mesh.castShadow = true;
+      const md = opponentModel(this.car, color);
+      this.mesh = md.grp;
       game.scene.add(this.mesh);
       this.len = md.len;
       this.wid = md.wid;
@@ -209,7 +241,7 @@
       this.rubber = 1;
       this.eliminated = false;
     }
-    dispose() { this.game.scene.remove(this.mesh); this.mesh.geometry.dispose(); }
+    dispose() { disposeOpponent(this.game.scene, this.mesh); }
     ratio(g) { const gs = this.car.gears; return gs.ratios[g - 1] * gs.final; }
     update(dt, raceT, others) {
       if (this.eliminated) { this.mesh.visible = false; return; }
@@ -272,6 +304,7 @@
       const y = this.game.world.heightAt(this.x, this.z);
       this.mesh.position.set(this.x, y, this.z);
       this.mesh.rotation.set(0, this.yaw, 0);
+      spinWheels(this.mesh, this.v, this.game.frameDt || 0.016, this.car.wheel.radius);
       this.y = y + 0.7;
     }
     rect() { return { x: this.x, z: this.z, hl: this.len / 2, hw: this.wid / 2, ang: this.yaw, y: this.y, vx: this.vx, vz: this.vz, mass: this.mass }; }
@@ -724,14 +757,13 @@
       col.needsUpdate = true;
     }
     buildGhost() {
-      const md = SB.CarModel.buildSimple(this.game.player.car.body === 'track' ? 'track' : this.game.player.car.body === 'coupe' ? 'coupe' : 'hatch');
-      this.ghostMesh = new T.Mesh(md.geo, new T.MeshBasicMaterial({ color: 0x7fd3ff, transparent: true, opacity: 0.35, depthWrite: false }));
+      this.ghostMesh = opponentModel(this.game.player.car, 0x7fd3ff, new T.MeshBasicMaterial({ color: 0x7fd3ff, transparent: true, opacity: 0.35, depthWrite: false })).grp;
       this.game.scene.add(this.ghostMesh);
     }
     dispose() {
       for (const r of this.rivals) r.dispose();
       this.gates.dispose();
-      if (this.ghostMesh) this.game.scene.remove(this.ghostMesh);
+      if (this.ghostMesh) disposeOpponent(this.game.scene, this.ghostMesh);
       if (this.lineMesh) { this.game.scene.remove(this.lineMesh); this.lineMesh.geometry.dispose(); this.lineMesh.material.dispose(); }
       this.game.hud.show('racePanel', false);
       this.game.hud.show('raceLights', false);
@@ -915,19 +947,19 @@
       const pl = game.player;
       pl.place(this.x0, this.z0, 0);
       game.prepareStart(true);
-      const md = SB.CarModel.buildSimple(pl.car.body === 'track' ? 'track' : pl.car.body === 'coupe' ? 'coupe' : 'hatch');
-      this.rival = { mesh: new T.Mesh(md.geo, new T.MeshStandardMaterial({ vertexColors: true, color: U.pick(SB.DATA.PAINT), roughness: 0.35, metalness: 0.3 })), z: this.z0, v: 0, gear: 1, shiftT: 0, car: pl.car, L: SB.DATA.AI_LEVELS[opts.ai != null ? opts.ai : game.settings.aiLevel], started: false, x: 797, len: md.len, wid: md.wid };
-      this.rival.mesh.castShadow = true;
+      const md = opponentModel(pl.car, U.pick(SB.DATA.PAINT));
+      this.rival = { mesh: md.grp, z: this.z0, v: 0, gear: 1, shiftT: 0, car: pl.car, L: SB.DATA.AI_LEVELS[opts.ai != null ? opts.ai : game.settings.aiLevel], started: false, x: 797, len: md.len, wid: md.wid };
       game.scene.add(this.rival.mesh);
       this.placeRival();
       this.perfect = 0;
       this.shifts = 0;
       game.hud.show('racePanel', true);
     }
-    dispose() { this.game.scene.remove(this.rival.mesh); this.game.hud.show('racePanel', false); for (const m of this.game.world.dragTree) m.emissiveIntensity = 0.05; }
+    dispose() { disposeOpponent(this.game.scene, this.rival.mesh); this.game.hud.show('racePanel', false); for (const m of this.game.world.dragTree) m.emissiveIntensity = 0.05; }
     placeRival() {
       const r = this.rival;
       r.mesh.position.set(r.x, this.game.world.heightAt(r.x, r.z), r.z);
+      spinWheels(r.mesh, r.v, this.game.frameDt || 0.016, r.car.wheel.radius);
       r.mesh.rotation.y = 0;
       r.vx = 0; r.vz = r.v;
     }

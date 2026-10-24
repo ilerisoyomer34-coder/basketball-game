@@ -12,7 +12,7 @@
     const E = SB.DATA.ECONOMY;
     const cars = {};
     for (const id of SB.DATA.CAR_ORDER) cars[id] = { owned: E.startCars.includes(id), insured: false, premium: 0, repairUntil: 0, lost: false, upgrades: [], tune: {}, paint: SB.DATA.CARS[id].color, finish: 'gloss', rim: 0xb9bec4, odo: 0, fuel: null, damage: null };
-    return { v: 1, credits: E.startCredits, cars, current: 'lodos', records: {}, collected: {}, achievements: {}, license: false, licensePoints: 100, stats: { explosions: 0, perfect: 0, stalls: 0, km: 0, starts: 0 }, clock: 9.2, day: 1, tipsSeen: false };
+    return { v: 2, credits: E.startCredits, cars, current: 'porsche', records: {}, collected: {}, achievements: {}, license: false, licensePoints: 100, stats: { explosions: 0, perfect: 0, stalls: 0, km: 0, starts: 0 }, clock: 9.2, day: 1, tipsSeen: false };
   }
 
   class Game {
@@ -25,6 +25,9 @@
       this.settings = U.deepMerge(U.clone(SB.DATA.SETTINGS_DEFAULT), stored);
       this.settings.rev = SB.DATA.SETTINGS_DEFAULT.rev;
       this.save = U.deepMerge(defaultSave(), U.store.get(SAVE_KEY, {}));
+      // save v2: the real cars arrived; start in the Porsche once
+      if (!(this.save.v >= 2)) { this.save.v = 2; this.save.current = 'porsche'; }
+      if (!SB.DATA.CARS[this.save.current] || !this.save.cars[this.save.current].owned) this.save.current = SB.DATA.ECONOMY.startCars.find((id) => this.save.cars[id].owned) || 'lodos';
       SB.i18n.setLang(this.settings.lang);
       if (this.settings.clutchMode !== 'manual') this.settings.clutchMode = 'auto';
       this.quality = this.pickQuality();
@@ -64,6 +67,7 @@
       // hex colours are authored for a linear framebuffer in r128; ACES keeps fire and headlights from clipping
       this.renderer.toneMapping = T.ACESFilmicToneMapping;
       this.renderer.toneMappingExposure = 1.1;
+      SB.CarModel.initEnv(this.renderer);
       this.scene = new T.Scene();
       this.camera = new T.PerspectiveCamera(62, 1, 0.1, 4000);
       this.revCam = new T.PerspectiveCamera(70, 16 / 9, 0.05, 300);
@@ -85,6 +89,9 @@
       this.skills = new SB.Modes.Skills(this);
       this.ui = new SB.UI(this);
       await step(t('load.garage'));
+      // the current car's model is fetched while loading (a slow network falls back to the simple body)
+      const cur = SB.DATA.CARS[this.save.current];
+      if (cur.glb && T.GLTFLoader) await Promise.race([SB.CarModel.loadGLB(cur.glb.hi).catch(() => null), new Promise((r) => setTimeout(r, 12000))]);
       this.spawnPlayer(this.save.current);
       this.mode = new SB.Modes.FreeRoam(this);
       this.mode.setVisible(false);
@@ -618,6 +625,7 @@
           while (this.acc >= h && n < maxSteps) { this.physicsStep(h); this.acc -= h; n++; }
           if (n >= maxSteps) this.acc = 0;
           const gdt = rdt * this.timeScale;
+          this.frameDt = gdt;
           this.time += gdt;
           this.handleEvents();
           this.traffic.update(gdt, p);
@@ -935,7 +943,7 @@
       } else {
         const v = p.visual;
         const eye = mode === 'hood' ? v.hoodEye : mode === 'bumper' ? v.bumperEye : v.cockpitEye;
-        if (mode === 'cockpit') v.interior.visible = true;
+        if (mode === 'cockpit' && !v.glb) v.interior.visible = true;
         cam.position.copy(eye).applyQuaternion(p.quat).add(p.pos);
         cam.position.x += shx * 0.4; cam.position.y += shy * 0.4;
         const q = new T.Quaternion().setFromEuler(new T.Euler(-look.lookY * 0.6 - 0.04, Math.PI + look.lookX, 0, 'YXZ'));
