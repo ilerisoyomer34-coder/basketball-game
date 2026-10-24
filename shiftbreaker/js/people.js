@@ -53,6 +53,9 @@
     kneelDown: { y: -0.45, hipL: [0.05, 0, 0], hipR: [0.05, 0, 0], knL: [1.6, 0, 0], knR: [1.6, 0, 0], shL: [0, 0, 1.42], elL: [0, 0, 1.75], shR: [0, 0, -1.42], elR: [0, 0, -1.75] },
     // lying face down (with lie()), arms stretched past the head
     proneArms: { neck: [-0.5, 0, 0], shL: [-2.85, 0, 0.3], elL: [-0.1, 0, 0], shR: [-2.85, 0, -0.3], elR: [-0.1, 0, 0] },
+    // baton raised, then the swing (the scene cuts to black before it lands)
+    strikeUp: { chest: [0, -0.25, 0], shR: [-2.75, 0.25, 0], elR: [-0.6, 0, 0], shL: [-0.6, -0.3, 0], elL: [-0.4, 0, 0] },
+    strikeDown: { chest: [0.45, 0.1, 0], neck: [0.3, 0, 0], shR: [-0.7, 0.3, 0], elR: [-0.15, 0, 0], shL: [-0.5, -0.3, 0], elL: [-0.4, 0, 0] },
     sitCuffed: { y: -0.42, chest: [0.12, 0.1, 0], neck: [0.1, 0.15, 0], hipL: [-1.35, 0, 0], hipR: [-1.35, 0, 0], knL: [1.45, 0, 0], knR: [1.45, 0, 0], shL: [-0.45, 0, 0.1], elL: [-0.7, 0, 0], shR: [0.35, 0, -0.75], elR: [-0.35, 0, 0] },
     sit: { y: -0.42, chest: [0.32, 0, 0], neck: [-0.15, 0, 0], hipL: [-1.35, 0, 0], hipR: [-1.35, 0, 0], knL: [1.45, 0, 0], knR: [1.45, 0, 0], shL: [-0.5, 0, 0.1], shR: [-0.5, 0, -0.1], elL: [-0.6, 0, 0], elR: [-0.6, 0, 0] },
   };
@@ -135,6 +138,11 @@
         gun.visible = false;
         J.handR.add(gun);
         // ticket book (left hand) and pen (right hand)
+        // baton: on the belt, in the hand for the strike
+        const batonG = geo('baton', () => new T.CylinderGeometry(0.018, 0.022, 0.6, 8));
+        this.batonBelt = add(J.hips, batonG, black, 0.19, -0.1, -0.04);
+        this.baton = add(J.handR, batonG, black, 0, -0.3, 0.02);
+        this.baton.visible = false;
         const pad = (this.pad = add(J.handL, geo('pad', () => new T.BoxGeometry(0.11, 0.15, 0.015)), mat(0xf2efe6), 0, -0.07, 0.03));
         pad.rotation.x = 0.4;
         pad.visible = false;
@@ -178,6 +186,7 @@
       if (this.gun) this.gun.visible = name === 'aim' || name === 'aimLow';
       if (this.holster) this.holster.scale.y = this.gun && this.gun.visible ? 0.75 : 1;
       if (this.pad) this.pad.visible = name === 'write';
+      if (this.baton) { this.baton.visible = name === 'strikeUp' || name === 'strikeDown'; this.batonBelt.visible = !this.baton.visible; }
     }
     // walk a polyline of {x, z}; done() fires on arrival
     go(points, speed, done) {
@@ -286,6 +295,18 @@
       const J = this.j, w = this.walkAmt, s = Math.sin(this.walkPh), cs = Math.cos(this.walkPh);
       for (const n of JOINTS) J[n].rotation.set(this.cur[n].x, this.cur[n].y, this.cur[n].z);
       if (this.lookSide) J.neck.rotation.y += this.lookSide;
+      // struggling on the ground: twist and kick (wiggle fades unless kept up)
+      if (this.wiggle > 0.01) {
+        const q = (this.wigPh = (this.wigPh || 0) + dt), w = this.wiggle;
+        J.chest.rotation.z += Math.sin(q * 17) * 0.22 * w;
+        J.shL.rotation.z += Math.sin(q * 13) * 0.45 * w;
+        J.shR.rotation.z -= Math.sin(q * 15 + 1) * 0.45 * w;
+        J.hipL.rotation.x += Math.sin(q * 12) * 0.4 * w;
+        J.hipR.rotation.x -= Math.sin(q * 12) * 0.4 * w;
+        J.knL.rotation.x += Math.max(0, Math.sin(q * 12)) * 0.6 * w;
+        J.knR.rotation.x += Math.max(0, -Math.sin(q * 12)) * 0.6 * w;
+        this.wiggle = Math.max(0, w - dt * 2.5);
+      }
       if (w > 0.01) {
         J.hipL.rotation.x += -0.48 * s * w;
         J.hipR.rotation.x += 0.48 * s * w;

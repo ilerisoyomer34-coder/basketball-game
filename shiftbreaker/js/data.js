@@ -492,7 +492,8 @@
     repairPerPct: 0.004, // of car value per % damage
     usedDiscount: 0.3,
     sellPct: 0.5,
-    fines: { redLight: 350, speeding: 250, wrongWay: 200, pullOver: 750, busted: 3000, impound: 1500 },
+    fines: { redLight: 350, speeding: 250, wrongWay: 200, pullOver: 750, busted: 3000, impound: 1500, resist: 1500 },
+    bailPerStar: 1000,
     points: { redLight: 10, speeding: 5, wrongWay: 5 },
     collectible: 500,
     skillToCredits: 0.1,

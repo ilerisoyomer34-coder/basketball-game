@@ -873,12 +873,12 @@
     }
 
     // ------------------------------------------------------------ police: arrest report
-    bustedReport(r, done) {
+    bustedReport(r, pay, wait) {
       const g = this.game;
       const { p, body, foot } = this.panel(t('bust.title'), t('bust.sub'));
       p.classList.add('bust');
       const s = Math.floor(r.chase);
-      const total = r.fine + r.impound;
+      const total = r.fine + r.impound + (r.resist || 0);
       const photo = r.mugs ? `<div class="bust-mugs">${r.mugs.filter(Boolean).map((m) => `<img alt="" src="${m}">`).join('')}</div>` : r.photo ? `<img alt="" src="${r.photo}">` : '';
       const rows = [
         [t('bust.chase'), Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')],
@@ -886,12 +886,18 @@
         [t('bust.takedowns'), String(r.takedowns)],
         [t('bust.bounty'), '−' + U.fmtInt(r.bounty) + ' ' + t('ui.cr')],
         [t('bust.fine'), '−' + U.fmtInt(r.fine) + ' ' + t('ui.cr')],
+        ...(r.resist ? [[t('bust.resist'), '−' + U.fmtInt(r.resist) + ' ' + t('ui.cr')]] : []),
         [t('bust.impound'), '−' + U.fmtInt(r.impound) + ' ' + t('ui.cr')],
         [t('bust.points'), '−' + r.points],
       ];
       body.appendChild(this.el('div', 'bust-grid', `<div class="bust-photo">${photo}<span class="cap">${esc(t(r.mugs ? 'bust.mug' : 'bust.photo'))} · ${esc(g.env.clockText())}</span><span class="stamp">${esc(t('bust.stamp'))}</span></div>
         <div class="bust-rows">${rows.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}<div class="tot"><span>${esc(t('bust.total'))}</span><b>−${U.fmtInt(g.settings.fines ? total : 0)} ${esc(t('ui.cr'))}</b></div></div>`));
-      foot.appendChild(this.btn(esc(t('bust.leave')), done, 'primary'));
+      // bail: out now for the money, or a night in the cell for free
+      const short = g.settings.fines && g.save.credits - total < r.bail;
+      const pb = this.btn(esc(t('bust.pay', { n: U.fmtInt(r.bail) })) + (short ? ' · ' + esc(t('ui.noMoney')) : ''), () => { if (!short) pay(); }, 'primary');
+      if (short) pb.disabled = true;
+      foot.appendChild(pb);
+      foot.appendChild(this.btn(esc(t('bust.wait')), wait));
       this.open(p, 'center');
     }
 
