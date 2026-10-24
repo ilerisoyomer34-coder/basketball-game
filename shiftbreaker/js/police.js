@@ -740,8 +740,10 @@
     at(time, key, fn) { if (this.bt >= time && !this.done[key]) { this.done[key] = true; fn(); } }
     // same on the real clock (for what happens while the beat clock is held)
     atT(time, key, fn) { if (this.t >= time && !this.done[key]) { this.done[key] = true; fn(); } }
-    sub(who, text, dur) {
+    // shout: an officer barking orders (bigger, shaking line)
+    sub(who, text, dur, shout) {
       const el = this.subEl;
+      el.classList.toggle('shout', !!shout);
       el.innerHTML = (who ? '<b></b>' : '') + '<span></span>';
       if (who) el.firstChild.textContent = who;
       el.lastChild.textContent = text;
@@ -750,7 +752,7 @@
       el.classList.add('show');
       clearTimeout(this._subT);
       this._subT = setTimeout(() => el.classList.remove('show'), (dur || 2.4) * 1000);
-      if (who) say(this.game, text, who === t('cine.who.radio') ? { rate: 1.15, pitch: 1 } : null);
+      if (who) say(this.game, text, who === t('cine.who.radio') ? { rate: 1.15, pitch: 1 } : shout ? { rate: 1.3, pitch: 0.7 } : null);
     }
     big(text, kind) {
       const el = this.bigEl;
@@ -852,21 +854,23 @@
       const grab = off(this.door, SL, 0.65, F, -0.6);
       const ground = (this.ground = this.ground || off(this.door, SL, 0.55, F, -0.25));
       const target = () => (this.bt > 3 ? P2(D.x, D.z) : this.door);
-      this.at(0.15, 'freeze', () => { this.sub(who, t('cine.a.freeze'), 1.8); g.audio.radioSquelch && g.audio.radioSquelch(); });
+      this.at(0.15, 'freeze', () => { this.sub(who, t('cine.a.freeze'), 1.8, true); g.audio.radioSquelch && g.audio.radioSquelch(); });
       this.at(0.35, 'o1', () => { O1.setPose('aim'); O1.go(this.route(O1, aim1), 1.9); });
       this.at(0.55, 'o2', () => { O2.setPose('aim'); O2.go(this.route(O2, grab), 1.8, () => { O2.face(this.door.x - SL.x, this.door.z - SL.z); O2.setPose('reach'); }); });
       if (O3) this.at(0.5, 'o3', () => { O3.setPose('aim'); O3.go(this.route(O3, aim3), 1.8); });
       for (const f of [O1, O3]) if (f && f.pose === 'aim' && !f.path) { const q = target(); f.face(q.x, q.z); }
-      this.at(1.9, 'out', () => this.sub(who, t('cine.a.out'), 1.6));
+      this.at(1.9, 'out', () => this.sub(who, t('cine.a.out'), 1.6, true));
       // the officer pulls the driver out and steps back with them
       this.at(3.0, 'pull', () => {
-        this.sub(who, t('cine.a.pull'), 1.3);
+        this.sub(who, t('cine.a.pull'), 1.3, true);
         D.setPose('stand');
         D.go([this.door, ground], 1.5);
         O2.go([off(grab, SL, 0.55, F, -0.4)], 1.3, () => O2.face(ground.x, ground.z));
         g.audio.thud(0.2);
       });
-      this.at(4.2, 'down', () => { D.face(ground.x + F.x * 5, ground.z + F.z * 5); D.setPose('kneelDown'); this.sub(who, t('cine.a.down'), 1.5); });
+      this.at(4.2, 'down', () => { D.face(ground.x + F.x * 5, ground.z + F.z * 5); D.setPose('kneelDown'); this.sub(who, t('cine.a.down'), 1.2, true); });
+      this.at(4.5, 'okay', () => this.sub(t('cine.who.you'), t('cine.a.okay'), 1.0, true));
+      this.at(5.3, 'still', () => this.sub(t('cine.who.officer2'), t('cine.a.still'), 1.2, true));
       this.at(4.8, 'lie', () => { D.lie(true); D.setPose('proneArms'); g.audio.thud(0.35); });
       this.at(5.0, 'kneel', () => {
         const hips = off(ground, F, 0.95), kp = off(hips, SL, 0.62);
@@ -880,8 +884,9 @@
       this.at(6.4, 'cuffL', () => { D.putCuffs('L'); g.audio.cuffs && g.audio.cuffs(); });
       this.at(6.75, 'cuffR', () => { D.putCuffs('R'); g.audio.cuffs && g.audio.cuffs(); this.big(t('cine.cuffed'), 'bad'); });
       this.at(7.0, 'photo', () => (this.photo = this.capture()));
-      this.at(7.3, 'rights', () => this.sub(who, t('cine.a.rights'), 2.4));
-      this.at(8.1, 'up', () => { O2.setPose('stand'); D.lie(false); D.setPose('handsBehind'); this.sub(who, t('cine.a.up2'), 1.2); });
+      this.at(6.95, 'tight', () => this.sub(t('cine.who.you'), t('cine.a.tight'), 1.0));
+      this.at(7.6, 'rights', () => this.sub(who, t('cine.a.rights'), 2.0));
+      this.at(8.1, 'up', () => { O2.setPose('stand'); D.lie(false); D.setPose('handsBehind'); this.sub(who, t('cine.a.up2'), 1.2, true); });
       this.at(8.9, 'walk', () => {
         const A = this.A, cl = cruiserLeft(A);
         const sd = Math.sign((D.x - A.x) * cl.x + (D.z - A.z) * cl.z) || 1;
@@ -904,7 +909,7 @@
       const g = this.game, n = this.police.peak;
       this.paused = true;
       this.struggle = { t: 0, meter: 0, presses: 0, gain: n >= 5 ? 0.1 : n >= 4 ? 0.115 : 0.13, done: false };
-      this.sub(t('cine.who.officer'), t('cine.a.hands'), 1.4);
+      this.sub(t('cine.who.officer'), t('cine.a.hands'), 1.4, true);
       const el = document.getElementById('cineStruggle');
       el.hidden = false;
       el.querySelector('span').textContent = t(this.game.input.device === 'touch' ? 'cine.struggle.touch' : 'cine.struggle', { key: g.keyLabel('interact') });
@@ -943,7 +948,7 @@
       const D = this.D;
       if (this.t > this.freeAt + 0.6 && !this.ranOff) {
         this.ranOff = true;
-        this.sub(t('cine.who.officer'), t('cine.a.stop'), 1.2);
+        this.sub(t('cine.who.officer'), t('cine.a.stop'), 1.2, true);
         D.go([this.door, this.seat], 2.8, () => { D.show(false); this.game.audio.thud(0.3); this.police.endScene('escape'); });
       }
       if (this.t > this.freeAt + 5 && !this.ended) { D.show(false); this.police.endScene('escape'); }
@@ -955,7 +960,7 @@
       const spot = off(this.ground, F, 1.35, this.SL, -0.6);
       O1.setPose('stand');
       O1.go(this.route(O1, spot), 3.6, () => { O1.face(D.x + F.x * 1.2, D.z + F.z * 1.2); O1.setPose('strikeUp'); this.swingAt = this.t; });
-      this.sub(t('cine.who.officer'), t('cine.a.resist'), 1.2);
+      this.sub(t('cine.who.officer'), t('cine.a.resist'), 1.2, true);
     }
     koBeats() {
       const g = this.game;
